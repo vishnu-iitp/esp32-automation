@@ -882,12 +882,44 @@ class HomeAutomationApp {
         document.getElementById('auth-container').classList.add('hidden');
         document.querySelector('.container').classList.remove('hidden');
         document.getElementById('logoutBtn').style.display = 'flex';
+        
+        // Add device JWT button if it doesn't exist
+        this.addDeviceJWTButton();
     }
 
     showAuthContainer() {
         document.getElementById('auth-container').classList.remove('hidden');
         document.querySelector('.container').classList.add('hidden');
         document.getElementById('logoutBtn').style.display = 'none';
+        
+        // Remove device JWT button
+        this.removeDeviceJWTButton();
+    }
+
+    addDeviceJWTButton() {
+        // Check if button already exists
+        if (document.getElementById('deviceJWTBtn')) return;
+        
+        const deviceJWTBtn = document.createElement('button');
+        deviceJWTBtn.id = 'deviceJWTBtn';
+        deviceJWTBtn.className = 'btn btn-secondary';
+        deviceJWTBtn.innerHTML = `
+            <span class="jwt-icon">🔑</span>
+            Device JWT
+        `;
+        deviceJWTBtn.addEventListener('click', () => this.generateDeviceJWT());
+        
+        // Add to header actions before logout button
+        const headerActions = document.querySelector('.header-actions');
+        const logoutBtn = document.getElementById('logoutBtn');
+        headerActions.insertBefore(deviceJWTBtn, logoutBtn);
+    }
+
+    removeDeviceJWTButton() {
+        const deviceJWTBtn = document.getElementById('deviceJWTBtn');
+        if (deviceJWTBtn) {
+            deviceJWTBtn.remove();
+        }
     }
 
     showSignUpForm() {
@@ -1076,6 +1108,12 @@ class HomeAutomationApp {
             return;
         }
 
+        // Ensure user is authenticated
+        if (!this.currentUser) {
+            this.showToast('You must be logged in to add devices', 'error');
+            return;
+        }
+
         try {
             const { data, error } = await this.supabase
                 .from('devices')
@@ -1085,7 +1123,7 @@ class HomeAutomationApp {
                         gpio: gpio,
                         state: 0, // Default to OFF
                         device_type: type,
-                        user_id: this.currentUser.id
+                        user_id: this.currentUser.id // Include authenticated user_id
                         //created_at: new Date().toISOString(),
                         //updated_at: new Date().toISOString()
                     }
@@ -1317,6 +1355,136 @@ class HomeAutomationApp {
         } catch (error) {
             console.error('Error deleting device:', error);
             this.showToast('Failed to delete device. Please check your connection.', 'error');
+        }
+    }
+
+    // =================== DEVICE JWT GENERATION ===================
+
+    async generateDeviceJWT() {
+        if (!this.currentUser) {
+            this.showToast('You must be logged in to generate a device JWT', 'error');
+            return null;
+        }
+
+        try {
+            // Get the current session to use the access token
+            const { data: { session } } = await this.supabase.auth.getSession();
+            
+            if (!session) {
+                this.showToast('No active session found. Please log in again.', 'error');
+                return null;
+            }
+
+            // Call the Supabase Edge Function to create device JWT
+            const response = await fetch(`${SUPABASE_URL}/functions/v1/create-device-jwt`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${session.access_token}`,
+                    'Content-Type': 'application/json',
+                    'apikey': SUPABASE_ANON_KEY
+                }
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.error || 'Failed to generate device JWT');
+            }
+
+            console.log('Device JWT generated successfully');
+            
+            // Create a modal to display the JWT
+            this.showDeviceJWTModal(result.deviceJwt, result.expires_at);
+            
+            return result.deviceJwt;
+
+        } catch (error) {
+            console.error('Error generating device JWT:', error);
+            this.showToast(`Failed to generate device JWT: ${error.message}`, 'error');
+            return null;
+        }
+    }
+
+    showDeviceJWTModal(jwt, expiresAt) {
+        // Create JWT display modal if it doesn't exist
+        if (!document.getElementById('deviceJWTModal')) {
+            this.createDeviceJWTModal();
+        }
+
+        // Populate the modal with JWT information
+        document.getElementById('deviceJWTToken').value = jwt;
+        document.getElementById('deviceJWTExpiry').textContent = new Date(expiresAt).toLocaleString();
+        document.getElementById('deviceJWTModal').classList.add('active');
+    }
+
+    createDeviceJWTModal() {
+        const modalHTML = `
+            <div class="modal-overlay" id="deviceJWTModal">
+                <div class="modal" style="max-width: 600px;">
+                    <div class="modal-header">
+                        <h2>Device JWT Token</h2>
+                        <button class="modal-close" id="closeDeviceJWT">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="jwt-info">
+                            <p><strong>Instructions:</strong></p>
+                            <ol>
+                                <li>Copy the JWT token below</li>
+                                <li>Open your ESP32 Arduino code (HomeAutomationESP32.ino)</li>
+                                <li>Replace <code>PASTE_YOUR_JWT_HERE</code> with this token</li>
+                                <li>Upload the code to your ESP32</li>
+                            </ol>
+                            
+                            <div class="form-group">
+                                <label for="deviceJWTToken">JWT Token (Valid for 5 years):</label>
+                                <textarea id="deviceJWTToken" readonly rows="6" style="font-family: monospace; font-size: 12px; word-break: break-all;"></textarea>
+                                <button class="btn btn-secondary" id="copyJWTBtn" style="margin-top: 8px;">📋 Copy to Clipboard</button>
+                            </div>
+                            
+                            <div class="jwt-expiry">
+                                <strong>Expires:</strong> <span id="deviceJWTExpiry"></span>
+                            </div>
+                            
+                            <div class="jwt-warning" style="margin-top: 16px; padding: 12px; background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 4px;">
+                                <strong>⚠️ Important:</strong> Keep this JWT secure. It allows your ESP32 to access your devices for 5 years. Do not share it publicly.
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-primary" id="closeDeviceJWTBtn">Done</button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+
+        // Add event listeners
+        document.getElementById('closeDeviceJWT').addEventListener('click', () => this.closeDeviceJWTModal());
+        document.getElementById('closeDeviceJWTBtn').addEventListener('click', () => this.closeDeviceJWTModal());
+        document.getElementById('copyJWTBtn').addEventListener('click', () => this.copyJWTToClipboard());
+        document.getElementById('deviceJWTModal').addEventListener('click', (e) => {
+            if (e.target.classList.contains('modal-overlay')) this.closeDeviceJWTModal();
+        });
+    }
+
+    closeDeviceJWTModal() {
+        const modal = document.getElementById('deviceJWTModal');
+        if (modal) {
+            modal.classList.remove('active');
+        }
+    }
+
+    async copyJWTToClipboard() {
+        const jwtTextarea = document.getElementById('deviceJWTToken');
+        try {
+            await navigator.clipboard.writeText(jwtTextarea.value);
+            this.showToast('JWT copied to clipboard!', 'success');
+        } catch (error) {
+            // Fallback for older browsers
+            jwtTextarea.select();
+            document.execCommand('copy');
+            this.showToast('JWT copied to clipboard!', 'success');
         }
     }
 

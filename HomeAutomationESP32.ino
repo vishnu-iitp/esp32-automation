@@ -21,6 +21,10 @@ const char* WIFI_SSID = "JioFiber-vishnu_4G";
 const char* WIFI_PASSWORD = "aeasap975";
 const char* SUPABASE_PROJECT_ID = "ahmseisassvgxbbccqyd";
 const char* SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFobXNlaXNhc3N2Z3hiYmNjcXlkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTYzOTgyNDEsImV4cCI6MjA3MTk3NDI0MX0.VR3dkEUvDzkH8s9YXQq3E3XCRSu62ldE1Qs9-DI1CaI";
+
+// Device JWT Authentication - Replace with your device-specific JWT
+const char* DEVICE_JWT = "PASTE_YOUR_JWT_HERE";
+
 const int DEVICE_PINS[] = {23, 22, 21, 19, 18, 5, 4, 2};
 const int NUM_PINS = sizeof(DEVICE_PINS) / sizeof(DEVICE_PINS[0]);
 const unsigned long HEARTBEAT_INTERVAL = 30000; // 30 seconds
@@ -54,9 +58,17 @@ void setup() {
     }
     Serial.println("\nWiFi connected!");
 
-    // Setup Supabase WebSocket connection
+    // Setup Supabase WebSocket connection with JWT authentication
     String host = String(SUPABASE_PROJECT_ID) + ".supabase.co";
     String path = "/realtime/v1/websocket?apikey=" + String(SUPABASE_ANON_KEY) + "&vsn=1.0.0";
+    
+    // Add JWT authentication if device JWT is provided
+    if (String(DEVICE_JWT) != "PASTE_YOUR_JWT_HERE" && strlen(DEVICE_JWT) > 10) {
+        path += "&jwt=" + String(DEVICE_JWT);
+        Serial.println("Connecting with device JWT authentication...");
+    } else {
+        Serial.println("Warning: No device JWT configured. Device may not receive updates due to RLS.");
+    }
     
     webSocket.beginSSL(host.c_str(), 443, path.c_str());
     webSocket.onEvent(webSocketEvent);
