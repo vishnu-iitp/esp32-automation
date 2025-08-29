@@ -27,8 +27,26 @@ class HomeAutomationApp {
         document.getElementById('voiceBtn').addEventListener('click', () => this.toggleVoiceControl());
         document.getElementById('stopVoiceBtn').addEventListener('click', () => this.stopVoiceControl());
 
+        // Add Device Modal Event Listeners
+        document.getElementById('addDeviceBtn').addEventListener('click', () => this.openAddDeviceModal());
+        document.getElementById('closeAddDevice').addEventListener('click', () => this.closeAddDeviceModal());
+        document.getElementById('cancelAddDevice').addEventListener('click', () => this.closeAddDeviceModal());
+        document.getElementById('saveAddDevice').addEventListener('click', () => this.addDevice());
+
+        // Rename Device Modal Event Listeners (will be added when modal is created)
+        document.addEventListener('click', (e) => {
+            if (e.target.classList.contains('edit-device-btn')) {
+                const deviceId = e.target.closest('.device-card').dataset.deviceId;
+                this.openRenameDeviceModal(deviceId);
+            }
+        });
+
         document.getElementById('settingsModal').addEventListener('click', (e) => {
             if (e.target.classList.contains('modal-overlay')) this.closeSettings();
+        });
+
+        document.getElementById('addDeviceModal').addEventListener('click', (e) => {
+            if (e.target.classList.contains('modal-overlay')) this.closeAddDeviceModal();
         });
     }
 
@@ -82,13 +100,18 @@ class HomeAutomationApp {
                 console.log('Device state changed:', payload.new);
                 this.handleDeviceUpdate(payload.new);
             })
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'devices' }, payload => {
+                console.log('New device added:', payload.new);
+                this.handleDeviceInsert(payload.new);
+            })
             .subscribe();
     }
 
     handleDeviceUpdate(updatedDevice) {
         const device = this.devices.find(d => d.id === updatedDevice.id);
         if (device) {
-            device.state = updatedDevice.state;
+            // Update device properties
+            Object.assign(device, updatedDevice);
             this.updateDeviceUI(device);
             
             // Stop voice listening if a voice command was being processed
@@ -96,6 +119,18 @@ class HomeAutomationApp {
                 this.stopVoiceControlAfterCommand();
             }
         }
+    }
+
+    handleDeviceInsert(newDevice) {
+        // Add new device to local array
+        this.devices.push(newDevice);
+        
+        // Add device card to UI
+        const grid = document.getElementById('deviceGrid');
+        const deviceCard = this.createDeviceCard(newDevice);
+        grid.appendChild(deviceCard);
+        
+        this.showToast(`New device "${newDevice.name}" added successfully!`, 'success');
     }
 
     async toggleDevice(deviceId) {
@@ -166,18 +201,30 @@ class HomeAutomationApp {
             light: '💡',
             fan: '🌀',
             outlet: '🔌',
+            motor: '⚙️',
+            heater: '🔥',
+            cooler: '❄️',
         };
         const type = device.name.toLowerCase().includes('light') ? 'light' :
-                     device.name.toLowerCase().includes('fan') ? 'fan' : 'outlet';
+                     device.name.toLowerCase().includes('fan') ? 'fan' : 
+                     device.name.toLowerCase().includes('outlet') ? 'outlet' :
+                     device.name.toLowerCase().includes('motor') ? 'motor' :
+                     device.name.toLowerCase().includes('heater') ? 'heater' :
+                     device.name.toLowerCase().includes('cooler') ? 'cooler' : 'outlet';
 
 
         card.innerHTML = `
             <div class="device-header">
                 <div class="device-info">
-                    <h3>${device.name}</h3>
+                    <h3 class="device-name">${device.name}</h3>
                     <div class="device-gpio">GPIO ${device.gpio}</div>
                 </div>
-                <div class="device-icon">${icons[type] || '⚡️'}</div>
+                <div class="device-actions">
+                    <button class="edit-device-btn" title="Rename Device">
+                        <span class="edit-icon">✏️</span>
+                    </button>
+                    <div class="device-icon">${icons[type] || '⚡️'}</div>
+                </div>
             </div>
             <div class="device-controls">
                 <div class="device-status">${device.state ? 'ON' : 'OFF'}</div>
@@ -764,6 +811,187 @@ class HomeAutomationApp {
         setTimeout(() => {
             toast.classList.remove('show');
         }, 3000);
+    }
+
+    // =================== DEVICE MANAGEMENT METHODS ===================
+
+    openAddDeviceModal() {
+        document.getElementById('addDeviceModal').classList.add('active');
+        // Clear form fields
+        document.getElementById('newDeviceName').value = '';
+        document.getElementById('newDeviceGpio').value = '';
+        document.getElementById('newDeviceType').value = 'light';
+    }
+
+    closeAddDeviceModal() {
+        document.getElementById('addDeviceModal').classList.remove('active');
+    }
+
+    async addDevice() {
+        const name = document.getElementById('newDeviceName').value.trim();
+        const gpio = parseInt(document.getElementById('newDeviceGpio').value);
+        const type = document.getElementById('newDeviceType').value;
+
+        // Validation
+        if (!name) {
+            this.showToast('Please enter a device name', 'error');
+            return;
+        }
+
+        if (!gpio || gpio < 1 || gpio > 39) {
+            this.showToast('Please enter a valid GPIO pin (1-39)', 'error');
+            return;
+        }
+
+        // Check if GPIO is already in use
+        const existingDevice = this.devices.find(d => d.gpio === gpio);
+        if (existingDevice) {
+            this.showToast(`GPIO ${gpio} is already in use by "${existingDevice.name}"`, 'error');
+            return;
+        }
+
+        try {
+            const { data, error } = await this.supabase
+                .from('devices')
+                .insert([
+                    {
+                        name: name,
+                        gpio: gpio,
+                        state: 0, // Default to OFF
+                        device_type: type,
+                        created_at: new Date().toISOString(),
+                        updated_at: new Date().toISOString()
+                    }
+                ])
+                .select();
+
+            if (error) {
+                console.error('Error adding device:', error);
+                this.showToast('Failed to add device. Please try again.', 'error');
+                return;
+            }
+
+            this.closeAddDeviceModal();
+            this.showToast(`Device "${name}" added successfully!`, 'success');
+
+        } catch (error) {
+            console.error('Error adding device:', error);
+            this.showToast('Failed to add device. Please check your connection.', 'error');
+        }
+    }
+
+    openRenameDeviceModal(deviceId) {
+        const device = this.devices.find(d => d.id == deviceId);
+        if (!device) return;
+
+        // Create rename modal if it doesn't exist
+        this.createRenameModal();
+
+        // Populate form with current device name
+        document.getElementById('renameDeviceName').value = device.name;
+        document.getElementById('renameDeviceModal').dataset.deviceId = deviceId;
+        document.getElementById('renameDeviceModal').classList.add('active');
+    }
+
+    createRenameModal() {
+        // Check if modal already exists
+        if (document.getElementById('renameDeviceModal')) return;
+
+        const modalHTML = `
+            <div class="modal-overlay" id="renameDeviceModal">
+                <div class="modal">
+                    <div class="modal-header">
+                        <h2>Rename Device</h2>
+                        <button class="modal-close" id="closeRenameDevice">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="form-group">
+                            <label for="renameDeviceName">Device Name</label>
+                            <input type="text" id="renameDeviceName" placeholder="Enter new device name">
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-secondary" id="cancelRenameDevice">Cancel</button>
+                        <button class="btn btn-primary" id="saveRenameDevice">Save Changes</button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+
+        // Add event listeners
+        document.getElementById('closeRenameDevice').addEventListener('click', () => this.closeRenameDeviceModal());
+        document.getElementById('cancelRenameDevice').addEventListener('click', () => this.closeRenameDeviceModal());
+        document.getElementById('saveRenameDevice').addEventListener('click', () => this.renameDevice());
+        document.getElementById('renameDeviceModal').addEventListener('click', (e) => {
+            if (e.target.classList.contains('modal-overlay')) this.closeRenameDeviceModal();
+        });
+    }
+
+    closeRenameDeviceModal() {
+        const modal = document.getElementById('renameDeviceModal');
+        if (modal) {
+            modal.classList.remove('active');
+        }
+    }
+
+    async renameDevice() {
+        const modal = document.getElementById('renameDeviceModal');
+        const deviceId = parseInt(modal.dataset.deviceId);
+        const newName = document.getElementById('renameDeviceName').value.trim();
+
+        // Validation
+        if (!newName) {
+            this.showToast('Please enter a device name', 'error');
+            return;
+        }
+
+        const device = this.devices.find(d => d.id === deviceId);
+        if (!device) {
+            this.showToast('Device not found', 'error');
+            return;
+        }
+
+        if (device.name === newName) {
+            this.closeRenameDeviceModal();
+            return; // No change needed
+        }
+
+        try {
+            const { error } = await this.supabase
+                .from('devices')
+                .update({ 
+                    name: newName,
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', deviceId);
+
+            if (error) {
+                console.error('Error renaming device:', error);
+                this.showToast('Failed to rename device. Please try again.', 'error');
+                return;
+            }
+
+            // Update local device object
+            device.name = newName;
+
+            // Update UI
+            const card = document.querySelector(`[data-device-id="${deviceId}"]`);
+            if (card) {
+                const nameElement = card.querySelector('.device-name');
+                if (nameElement) {
+                    nameElement.textContent = newName;
+                }
+            }
+
+            this.closeRenameDeviceModal();
+            this.showToast(`Device renamed to "${newName}" successfully!`, 'success');
+
+        } catch (error) {
+            console.error('Error renaming device:', error);
+            this.showToast('Failed to rename device. Please check your connection.', 'error');
+        }
     }
 }
 
