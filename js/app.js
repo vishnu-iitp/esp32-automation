@@ -4,6 +4,7 @@ class HomeAutomationApp {
         this.devices = [];
         this.isListening = false;
         this.recognition = null;
+        this.isProcessingVoiceCommand = false;
         
         this.init();
     }
@@ -89,6 +90,11 @@ class HomeAutomationApp {
         if (device) {
             device.state = updatedDevice.state;
             this.updateDeviceUI(device);
+            
+            // Stop voice listening if a voice command was being processed
+            if (this.isProcessingVoiceCommand && this.isListening) {
+                this.stopVoiceControlAfterCommand();
+            }
         }
     }
 
@@ -109,6 +115,9 @@ class HomeAutomationApp {
         }
 
         this.showToast(`${device.name} turned ${newState ? 'ON' : 'OFF'}`, 'success');
+        
+        // Don't stop voice control for manual toggles, only for voice commands
+        // The isProcessingVoiceCommand flag will be false for manual toggles
     }
 
     async setDeviceState(deviceId, newState) {
@@ -240,6 +249,7 @@ class HomeAutomationApp {
         if (!this.recognition) return;
 
         this.isListening = true;
+        this.isProcessingVoiceCommand = false; // Reset processing flag when starting
         this.recognition.start();
         document.getElementById('voicePanel').style.display = 'block';
         this.showToast('Voice control activated', 'success');
@@ -249,27 +259,51 @@ class HomeAutomationApp {
         if (!this.recognition) return;
 
         this.isListening = false;
+        this.isProcessingVoiceCommand = false;
         this.recognition.stop();
         document.getElementById('voicePanel').style.display = 'none';
         this.showToast('Voice control deactivated', 'success');
     }
 
+    stopVoiceControlAfterCommand() {
+        if (!this.recognition) return;
+
+        this.isListening = false;
+        this.isProcessingVoiceCommand = false;
+        this.recognition.stop();
+        document.getElementById('voicePanel').style.display = 'none';
+        this.showToast('Voice command executed. Tap voice button to give another command.', 'info');
+    }
+
     async processVoiceCommand(command) {
         try {
+            // Set flag to indicate we're processing a voice command
+            this.isProcessingVoiceCommand = true;
+            
             // Use the intelligent NLU system to process the command
             const parsedCommand = this.processIntelligentCommand(command, this.devices);
             
             if (!parsedCommand || !parsedCommand.intent) {
                 this.showToast('Could not understand the command. Please try again.', 'error');
+                this.isProcessingVoiceCommand = false;
                 return;
             }
 
             // Handle the parsed command based on intent
             await this.executeCommand(parsedCommand);
             
+            // Reset the flag after a delay if no device state change occurred
+            // This handles cases where the command doesn't result in a device state change
+            setTimeout(() => {
+                if (this.isProcessingVoiceCommand) {
+                    this.isProcessingVoiceCommand = false;
+                }
+            }, 3000); // 3 second timeout
+            
         } catch (error) {
             console.error('Voice command processing error:', error);
             this.showToast('Error processing voice command.', 'error');
+            this.isProcessingVoiceCommand = false;
         }
     }
 
@@ -595,6 +629,7 @@ class HomeAutomationApp {
         
         if (requires_clarification) {
             this.showToast(clarification_prompt, 'warning');
+            this.isProcessingVoiceCommand = false;
             return;
         }
         
@@ -606,6 +641,7 @@ class HomeAutomationApp {
         if (intent === 'set_state') {
             if (!state) {
                 this.showToast('Could not determine the desired state.', 'error');
+                this.isProcessingVoiceCommand = false;
                 return;
             }
             
@@ -619,6 +655,7 @@ class HomeAutomationApp {
     handleStateQuery(targets) {
         if (targets.length === 0) {
             this.showToast('No devices found to query.', 'error');
+            this.isProcessingVoiceCommand = false;
             return;
         }
         
@@ -636,6 +673,9 @@ class HomeAutomationApp {
             ).join(', ');
             this.showToast(`Device statuses: ${statuses}`, 'info');
         }
+        
+        // Reset processing flag for query commands since they don't change device state
+        this.isProcessingVoiceCommand = false;
     }
 
     /**
@@ -644,39 +684,47 @@ class HomeAutomationApp {
     async handleSetState(targets, state) {
         if (targets.length === 0) {
             this.showToast('No devices found to control.', 'error');
+            this.isProcessingVoiceCommand = false;
             return;
         }
         
         const stateValue = state === 'ON' ? 1 : 0;
         
-        // Handle "all" devices
-        if (targets.includes('all')) {
-            await Promise.all(this.devices.map(device => 
+        try {
+            // Handle "all" devices
+            if (targets.includes('all')) {
+                await Promise.all(this.devices.map(device => 
+                    this.setDeviceState(device.id, stateValue)
+                ));
+                this.showToast(`Turned ${state} all devices.`, 'success');
+                return;
+            }
+            
+            // Handle specific devices
+            const targetDevices = targets.map(name => 
+                this.devices.find(d => d.name === name)
+            ).filter(d => d);
+            
+            if (targetDevices.length === 0) {
+                this.showToast('Device not found.', 'error');
+                this.isProcessingVoiceCommand = false;
+                return;
+            }
+            
+            await Promise.all(targetDevices.map(device => 
                 this.setDeviceState(device.id, stateValue)
             ));
-            this.showToast(`Turned ${state} all devices.`, 'success');
-            return;
-        }
-        
-        // Handle specific devices
-        const targetDevices = targets.map(name => 
-            this.devices.find(d => d.name === name)
-        ).filter(d => d);
-        
-        if (targetDevices.length === 0) {
-            this.showToast('Device not found.', 'error');
-            return;
-        }
-        
-        await Promise.all(targetDevices.map(device => 
-            this.setDeviceState(device.id, stateValue)
-        ));
-        
-        if (targetDevices.length === 1) {
-            this.showToast(`${targetDevices[0].name} turned ${state}`, 'success');
-        } else {
-            const deviceNames = targetDevices.map(d => d.name).join(', ');
-            this.showToast(`Turned ${state}: ${deviceNames}`, 'success');
+            
+            if (targetDevices.length === 1) {
+                this.showToast(`${targetDevices[0].name} turned ${state}`, 'success');
+            } else {
+                const deviceNames = targetDevices.map(d => d.name).join(', ');
+                this.showToast(`Turned ${state}: ${deviceNames}`, 'success');
+            }
+        } catch (error) {
+            console.error('Error in handleSetState:', error);
+            this.showToast('Failed to execute command.', 'error');
+            this.isProcessingVoiceCommand = false;
         }
     }
 
