@@ -39,17 +39,14 @@ class HomeAutomationApp {
 
         // Rename Device Modal Event Listeners (will be added when modal is created)
         document.addEventListener('click', (e) => {
-            // Check for edit button click (button or its child elements)
-            const editBtn = e.target.closest('.edit-device-btn');
-            if (editBtn) {
-                const deviceId = editBtn.closest('.device-card').dataset.deviceId;
+            if (e.target.classList.contains('edit-device-btn')) {
+                const deviceId = e.target.closest('.device-card').dataset.deviceId;
                 this.openRenameDeviceModal(deviceId);
             }
             
-            // Check for delete button click (button or its child elements)
-            const deleteBtn = e.target.closest('.delete-device-btn');
-            if (deleteBtn) {
-                const deviceId = deleteBtn.closest('.device-card').dataset.deviceId;
+            // Delete Device Event Listener
+            if (e.target.classList.contains('delete-device-btn')) {
+                const deviceId = e.target.closest('.device-card').dataset.deviceId;
                 this.confirmDeleteDevice(deviceId);
             }
         });
@@ -343,13 +340,8 @@ class HomeAutomationApp {
             // Set flag to indicate we're processing a voice command
             this.isProcessingVoiceCommand = true;
             
-            console.log('Processing voice command:', command);
-            console.log('Available devices:', this.devices.map(d => d.name));
-            
             // Use the intelligent NLU system to process the command
             const parsedCommand = this.processIntelligentCommand(command, this.devices);
-            
-            console.log('Parsed command:', parsedCommand);
             
             if (!parsedCommand || !parsedCommand.intent) {
                 this.showToast('Could not understand the command. Please try again.', 'error');
@@ -545,12 +537,8 @@ class HomeAutomationApp {
         // First, try exact device name matches (case-insensitive)
         const exactMatches = devices.filter(device => {
             const deviceName = device.name.toLowerCase();
-            const isMatch = command.includes(deviceName);
-            console.log(`Checking exact match for "${device.name}" (${deviceName}) in "${command}": ${isMatch}`);
-            return isMatch;
+            return command.includes(deviceName);
         });
-        
-        console.log(`Found ${exactMatches.length} exact matches:`, exactMatches.map(d => d.name));
         
         if (exactMatches.length === 1) {
             return {
@@ -645,6 +633,25 @@ class HomeAutomationApp {
             }
         }
         
+        // Check location matching
+        for (const [location, synonyms] of Object.entries(locationSynonyms)) {
+            if (deviceName.includes(location)) {
+                for (const synonym of synonyms) {
+                    if (command.includes(synonym)) {
+                        score += 40;
+                        break;
+                    }
+                }
+            }
+        }
+        
+        return score;
+    }
+        }
+        
+        // Check location matching
+        for (const [location, synonyms] of Object.entries(locationSynonyms)) {
+            if (deviceName.includes(location)) {
         // Check location matching
         for (const [location, synonyms] of Object.entries(locationSynonyms)) {
             if (deviceName.includes(location)) {
@@ -808,11 +815,7 @@ class HomeAutomationApp {
                 this.devices.find(d => d.name === name)
             ).filter(d => d);
             
-            console.log('Target device names:', targets);
-            console.log('Found target devices:', targetDevices.map(d => d ? d.name : 'NOT FOUND'));
-            
             if (targetDevices.length === 0) {
-                console.log('No devices found for targets:', targets);
                 this.showToast('Device not found.', 'error');
                 this.isProcessingVoiceCommand = false;
                 return;
