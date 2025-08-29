@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Home Control</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#1e3a8a">
+    <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192x192.png">
+    <link rel="apple-touch-icon" href="icons/icon-192x192.png">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1 class="app-title">
+                    <span class="title-icon">🏠</span>
+                    Smart Home
+                </h1>
+                <div class="header-actions">
+                    <button class="btn btn-secondary" id="voiceBtn">
+                        <span class="voice-icon">🎤</span>
+                        Voice Control
+                    </button>
+                    <button class="btn btn-secondary" id="settingsBtn">
+                        <span class="settings-icon">⚙️</span>
+                        Settings
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Connection Status -->
+        <div class="status-banner" id="statusBanner">
+            <div class="status-content">
+                <span class="status-icon" id="statusIcon">🔴</span>
+                <span class="status-text" id="statusText">Connecting to Supabase...</span>
+            </div>
+        </div>
+
+        <!-- Voice Control Panel -->
+        <div class="voice-panel" id="voicePanel" style="display: none;">
+            <div class="voice-content">
+                <div class="voice-status" id="voiceStatus">
+                    <span class="voice-indicator">🎤</span>
+                    <span>Listening...</span>
+                </div>
+                <p class="voice-instruction">Say commands like "Turn on light 1" or "Turn off all lights"</p>
+                <button class="btn btn-danger" id="stopVoiceBtn">Stop Listening</button>
+            </div>
+        </div>
+
+        <!-- Device Grid -->
+        <main class="device-grid" id="deviceGrid">
+            <!-- Device cards will be dynamically generated -->
+        </main>
+
+        <!-- Add Device Button -->
+        <div class="add-device-section">
+            <button class="btn btn-primary add-device-btn" id="addDeviceBtn">
+                <span class="add-icon">➕</span>
+                Add Device
+            </button>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div class="modal-overlay" id="settingsModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>Settings</h2>
+                <button class="modal-close" id="closeSettings">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="settings-section">
+                    <h3>Supabase Configuration</h3>
+                    <div class="form-group">
+                        <label for="supabaseUrl">Supabase Project URL</label>
+                        <input type="url" id="supabaseUrl" placeholder="https://your-project.supabase.co">
+                        <small>Your Supabase project URL from the dashboard</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="supabaseKey">Supabase Anon Key</label>
+                        <input type="password" id="supabaseKey" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...">
+                        <small>Your Supabase anonymous public key</small>
+                    </div>
+                </div>
+                
+                <div class="settings-section">
+                    <h3>Device Management</h3>
+                    <div class="form-group">
+                        <label for="deviceName">Device Name</label>
+                        <input type="text" id="deviceName" placeholder="Living Room Light">
+                    </div>
+                    <div class="form-group">
+                        <label for="deviceGpio">GPIO Pin</label>
+                        <input type="number" id="deviceGpio" placeholder="23" min="1" max="39">
+                    </div>
+                    <div class="form-group">
+                        <label for="deviceType">Device Type</label>
+                        <select id="deviceType">
+                            <option value="light">💡 Light</option>
+                            <option value="fan">🌀 Fan</option>
+                            <option value="outlet">🔌 Outlet</option>
+                            <option value="motor">⚙️ Motor</option>
+                            <option value="heater">🔥 Heater</option>
+                            <option value="cooler">❄️ Cooler</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="cancelSettings">Cancel</button>
+                <button class="btn btn-primary" id="saveSettings">Save Settings</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Device Modal -->
+    <div class="modal-overlay" id="addDeviceModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>Add New Device</h2>
+                <button class="modal-close" id="closeAddDevice">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="newDeviceName">Device Name</label>
+                    <input type="text" id="newDeviceName" placeholder="Kitchen Light">
+                </div>
+                <div class="form-group">
+                    <label for="newDeviceGpio">GPIO Pin</label>
+                    <input type="number" id="newDeviceGpio" placeholder="23" min="1" max="39">
+                </div>
+                <div class="form-group">
+                    <label for="newDeviceType">Device Type</label>
+                    <select id="newDeviceType">
+                        <option value="light">💡 Light</option>
+                        <option value="fan">🌀 Fan</option>
+                        <option value="outlet">🔌 Outlet</option>
+                        <option value="motor">⚙️ Motor</option>
+                        <option value="heater">🔥 Heater</option>
+                        <option value="cooler">❄️ Cooler</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="cancelAddDevice">Cancel</button>
+                <button class="btn btn-primary" id="saveAddDevice">Add Device</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Toast -->
+    <div class="toast" id="toast"></div>
+
+    <!-- Scripts -->
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
