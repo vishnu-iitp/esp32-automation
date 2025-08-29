@@ -12,6 +12,13 @@ body {
     color: #333;
     padding: 0;
     margin: 0;
+    /* PWA specific improvements */
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    /* Support for mobile notches and safe areas */
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
 }
 
 .container {
@@ -19,6 +26,9 @@ body {
     margin: 0 auto;
     padding: 20px;
     min-height: 100vh;
+    /* Account for safe areas on mobile */
+    padding-left: max(20px, env(safe-area-inset-left));
+    padding-right: max(20px, env(safe-area-inset-right));
 }
 
 /* Header Styles */
@@ -185,6 +195,7 @@ body {
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
     gap: 20px;
     margin-bottom: 30px;
+    padding: 0 5px; /* Small padding to prevent edge cutoff on mobile */
 }
 
 /* Device Card */
@@ -198,6 +209,19 @@ body {
     transition: all 0.3s ease;
     position: relative;
     overflow: hidden;
+    /* Better touch interaction */
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+}
+
+.device-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+}
+
+/* Enhanced mobile touch feedback */
+.device-card:active {
+    transform: translateY(-2px) scale(0.98);
 }
 
 .device-card:hover {
@@ -235,7 +259,39 @@ body {
 .device-actions {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
+}
+
+.edit-device-btn,
+.delete-device-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 6px;
+    border-radius: 8px;
+    transition: all 0.2s ease;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.edit-device-btn:hover {
+    background: rgba(59, 130, 246, 0.1);
+    transform: scale(1.1);
+}
+
+.delete-device-btn:hover {
+    background: rgba(239, 68, 68, 0.1);
+    transform: scale(1.1);
+}
+
+.delete-device-btn .delete-icon {
+    color: #ef4444;
+}
+
+.edit-device-btn .edit-icon {
+    color: #3b82f6;
 }
 
 .edit-device-btn {
@@ -294,6 +350,15 @@ body {
     transition: all 0.3s ease;
     border: none;
     outline: none;
+    /* Better mobile touch */
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    /* Larger touch target for mobile */
+    min-height: 44px;
+    min-width: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .toggle-switch.active {
@@ -315,6 +380,11 @@ body {
 
 .toggle-switch.active::before {
     transform: translateX(30px);
+}
+
+/* Enhanced touch feedback for toggle */
+.toggle-switch:active {
+    transform: scale(0.95);
 }
 
 /* Add Device Section */
@@ -500,6 +570,69 @@ body {
 
 .toast.info {
     background: #3b82f6;
+}
+
+/* Delete Confirmation Modal Styles */
+.delete-warning {
+    text-align: center;
+    padding: 20px 0;
+}
+
+.delete-warning .warning-icon {
+    font-size: 3rem;
+    margin-bottom: 15px;
+    color: #f59e0b;
+}
+
+.delete-warning p {
+    margin-bottom: 10px;
+    font-size: 1.1rem;
+}
+
+.delete-warning .warning-text {
+    color: #6b7280;
+    font-size: 0.95rem;
+    margin-top: 15px;
+}
+
+.delete-warning strong {
+    color: #ef4444;
+    font-weight: 600;
+}
+
+/* PWA Install Button Styles */
+.install-btn {
+    background: linear-gradient(135deg, #10b981, #059669);
+    color: white;
+    box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);
+    position: relative;
+    overflow: hidden;
+}
+
+.install-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
+}
+
+.install-btn .install-icon {
+    font-size: 1.1em;
+}
+
+/* PWA specific styles when installed */
+@media all and (display-mode: standalone) {
+    .install-btn {
+        display: none !important;
+    }
+    
+    body {
+        /* Remove any browser chrome adjustments when in PWA mode */
+        user-select: none;
+    }
+    
+    .header {
+        /* Add some padding for status bar on mobile */
+        padding-top: env(safe-area-inset-top, 20px);
+    }
 }
 
 /* Responsive Design */

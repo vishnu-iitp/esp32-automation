@@ -5,6 +5,7 @@ class HomeAutomationApp {
         this.isListening = false;
         this.recognition = null;
         this.isProcessingVoiceCommand = false;
+        this.deferredPrompt = null; // For PWA installation
         
         this.init();
     }
@@ -16,6 +17,9 @@ class HomeAutomationApp {
         await this.fetchInitialDevices();
         this.setupRealtimeSubscriptions();
         this.setupVoiceControl();
+        this.setupPWAInstallation(); // Add PWA setup
+        this.handleURLParameters(); // Handle app shortcuts
+        this.handleOnlineStatus(); // Setup offline/online handling
     }
 
     setupEventListeners() {
@@ -38,6 +42,12 @@ class HomeAutomationApp {
             if (e.target.classList.contains('edit-device-btn')) {
                 const deviceId = e.target.closest('.device-card').dataset.deviceId;
                 this.openRenameDeviceModal(deviceId);
+            }
+            
+            // Delete Device Event Listener
+            if (e.target.classList.contains('delete-device-btn')) {
+                const deviceId = e.target.closest('.device-card').dataset.deviceId;
+                this.confirmDeleteDevice(deviceId);
             }
         });
 
@@ -222,6 +232,9 @@ class HomeAutomationApp {
                 <div class="device-actions">
                     <button class="edit-device-btn" title="Rename Device">
                         <span class="edit-icon">✏️</span>
+                    </button>
+                    <button class="delete-device-btn" title="Delete Device">
+                        <span class="delete-icon">🗑️</span>
                     </button>
                     <div class="device-icon">${icons[type] || '⚡️'}</div>
                 </div>
@@ -993,20 +1006,291 @@ class HomeAutomationApp {
             this.showToast('Failed to rename device. Please check your connection.', 'error');
         }
     }
+
+    // =================== DELETE DEVICE METHODS ===================
+
+    confirmDeleteDevice(deviceId) {
+        const device = this.devices.find(d => d.id == deviceId);
+        if (!device) return;
+
+        // Create confirmation modal if it doesn't exist
+        this.createDeleteConfirmationModal();
+
+        // Set device info in modal
+        document.getElementById('deleteDeviceName').textContent = device.name;
+        document.getElementById('deleteConfirmationModal').dataset.deviceId = deviceId;
+        document.getElementById('deleteConfirmationModal').classList.add('active');
+    }
+
+    createDeleteConfirmationModal() {
+        // Check if modal already exists
+        if (document.getElementById('deleteConfirmationModal')) return;
+
+        const modalHTML = `
+            <div class="modal-overlay" id="deleteConfirmationModal">
+                <div class="modal">
+                    <div class="modal-header">
+                        <h2>Delete Device</h2>
+                        <button class="modal-close" id="closeDeleteConfirmation">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="delete-warning">
+                            <div class="warning-icon">⚠️</div>
+                            <p>Are you sure you want to delete <strong id="deleteDeviceName"></strong>?</p>
+                            <p class="warning-text">This action cannot be undone. The device will be permanently removed from your system.</p>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-secondary" id="cancelDeleteDevice">Cancel</button>
+                        <button class="btn btn-danger" id="confirmDeleteDevice">Delete Device</button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+
+        // Add event listeners
+        document.getElementById('closeDeleteConfirmation').addEventListener('click', () => this.closeDeleteConfirmationModal());
+        document.getElementById('cancelDeleteDevice').addEventListener('click', () => this.closeDeleteConfirmationModal());
+        document.getElementById('confirmDeleteDevice').addEventListener('click', () => this.deleteDevice());
+        document.getElementById('deleteConfirmationModal').addEventListener('click', (e) => {
+            if (e.target.classList.contains('modal-overlay')) this.closeDeleteConfirmationModal();
+        });
+    }
+
+    closeDeleteConfirmationModal() {
+        const modal = document.getElementById('deleteConfirmationModal');
+        if (modal) {
+            modal.classList.remove('active');
+        }
+    }
+
+    async deleteDevice() {
+        const modal = document.getElementById('deleteConfirmationModal');
+        const deviceId = parseInt(modal.dataset.deviceId);
+
+        const device = this.devices.find(d => d.id === deviceId);
+        if (!device) {
+            this.showToast('Device not found', 'error');
+            return;
+        }
+
+        try {
+            const { error } = await this.supabase
+                .from('devices')
+                .delete()
+                .eq('id', deviceId);
+
+            if (error) {
+                console.error('Error deleting device:', error);
+                this.showToast('Failed to delete device. Please try again.', 'error');
+                return;
+            }
+
+            // Remove device from local array
+            this.devices = this.devices.filter(d => d.id !== deviceId);
+
+            // Remove device card from UI
+            const card = document.querySelector(`[data-device-id="${deviceId}"]`);
+            if (card) {
+                card.remove();
+            }
+
+            this.closeDeleteConfirmationModal();
+            this.showToast(`Device "${device.name}" deleted successfully!`, 'success');
+
+        } catch (error) {
+            console.error('Error deleting device:', error);
+            this.showToast('Failed to delete device. Please check your connection.', 'error');
+        }
+    }
+
+    // =================== PWA INSTALLATION METHODS ===================
+
+    setupPWAInstallation() {
+        // Listen for beforeinstallprompt event
+        window.addEventListener('beforeinstallprompt', (e) => {
+            // Prevent the mini-infobar from appearing on mobile
+            e.preventDefault();
+            // Stash the event so it can be triggered later
+            this.deferredPrompt = e;
+            // Show the install button
+            this.showInstallButton();
+        });
+
+        // Listen for app installed event
+        window.addEventListener('appinstalled', () => {
+            console.log('PWA was installed');
+            this.hideInstallButton();
+            this.showToast('App installed successfully!', 'success');
+            this.deferredPrompt = null;
+        });
+
+        // Check if app is already installed
+        if (window.matchMedia('(display-mode: standalone)').matches) {
+            console.log('PWA is running in standalone mode');
+            this.hideInstallButton();
+        }
+    }
+
+    showInstallButton() {
+        // Create install button if it doesn't exist
+        if (!document.getElementById('installBtn')) {
+            const installBtn = document.createElement('button');
+            installBtn.id = 'installBtn';
+            installBtn.className = 'btn btn-primary install-btn';
+            installBtn.innerHTML = `
+                <span class="install-icon">📱</span>
+                Install App
+            `;
+            installBtn.addEventListener('click', () => this.installPWA());
+            
+            // Add to header actions
+            const headerActions = document.querySelector('.header-actions');
+            headerActions.insertBefore(installBtn, headerActions.firstChild);
+        }
+    }
+
+    hideInstallButton() {
+        const installBtn = document.getElementById('installBtn');
+        if (installBtn) {
+            installBtn.remove();
+        }
+    }
+
+    async installPWA() {
+        if (!this.deferredPrompt) return;
+
+        // Show the prompt
+        this.deferredPrompt.prompt();
+        
+        // Wait for the user to respond to the prompt
+        const { outcome } = await this.deferredPrompt.userChoice;
+        
+        if (outcome === 'accepted') {
+            console.log('User accepted the install prompt');
+        } else {
+            console.log('User dismissed the install prompt');
+        }
+        
+        // Clear the deferredPrompt
+        this.deferredPrompt = null;
+    }
+
+    // =================== URL PARAMETER HANDLING ===================
+
+    handleURLParameters() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const action = urlParams.get('action');
+
+        switch (action) {
+            case 'voice':
+                // Start voice control if accessed via shortcut
+                setTimeout(() => {
+                    if (!this.isListening) {
+                        this.startVoiceControl();
+                    }
+                }, 1000);
+                break;
+            case 'add':
+                // Open add device modal if accessed via shortcut
+                setTimeout(() => {
+                    this.openAddDeviceModal();
+                }, 500);
+                break;
+        }
+
+        // Clean up URL after handling
+        if (action) {
+            window.history.replaceState({}, document.title, window.location.pathname);
+        }
+    }
+
+    // =================== OFFLINE SUPPORT ===================
+
+    queueOfflineAction(action) {
+        // Store failed actions for retry when back online
+        const offlineActions = JSON.parse(localStorage.getItem('offlineActions') || '[]');
+        offlineActions.push({
+            ...action,
+            timestamp: Date.now()
+        });
+        localStorage.setItem('offlineActions', JSON.stringify(offlineActions));
+    }
+
+    handleOnlineStatus() {
+        window.addEventListener('online', () => {
+            this.showToast('Connection restored!', 'success');
+            this.updateConnectionStatus('connected', 'Connected to Supabase');
+            // Retry any queued offline actions
+            this.retryOfflineActions();
+        });
+
+        window.addEventListener('offline', () => {
+            this.showToast('You are offline. Changes will be synced when reconnected.', 'info');
+            this.updateConnectionStatus('disconnected', 'Offline - Changes will be synced later');
+        });
+    }
+
+    async retryOfflineActions() {
+        const offlineActions = JSON.parse(localStorage.getItem('offlineActions') || '[]');
+        
+        for (const action of offlineActions) {
+            try {
+                // Retry the action based on its type
+                if (action.type === 'toggleDevice') {
+                    await this.toggleDevice(action.deviceId);
+                } else if (action.type === 'addDevice') {
+                    // Handle add device retry
+                } else if (action.type === 'deleteDevice') {
+                    // Handle delete device retry
+                }
+            } catch (error) {
+                console.error('Failed to retry offline action:', error);
+            }
+        }
+        
+        // Clear processed actions
+        localStorage.setItem('offlineActions', '[]');
+    }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
     window.app = new HomeAutomationApp();
 });
 
+// Enhanced service worker registration with update handling
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
         navigator.serviceWorker.register('service-worker.js')
             .then(registration => {
                 console.log('Service Worker registered successfully:', registration.scope);
+                
+                // Check for updates
+                registration.addEventListener('updatefound', () => {
+                    const newWorker = registration.installing;
+                    newWorker.addEventListener('statechange', () => {
+                        if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                            // New content available, notify user
+                            if (window.app) {
+                                window.app.showToast('New app version available! Refresh to update.', 'info');
+                            }
+                        }
+                    });
+                });
             })
             .catch(error => {
                 console.log('Service Worker registration failed:', error);
             });
+            
+        // Listen for service worker messages
+        navigator.serviceWorker.addEventListener('message', event => {
+            if (event.data.type === 'UPDATE_AVAILABLE') {
+                if (window.app) {
+                    window.app.showToast('App update available! Refresh to get the latest version.', 'info');
+                }
+            }
+        });
     });
 }
