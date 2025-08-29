@@ -255,55 +255,428 @@ class HomeAutomationApp {
     }
 
     async processVoiceCommand(command) {
-        // Step 1: Determine the action (turn on or off)
-        let action = null;
-        if (command.includes('turn on') || command.includes('switch on')) {
-            action = 1; // ON
-        } else if (command.includes('turn off') || command.includes('switch off')) {
-            action = 0; // OFF
-        }
+        try {
+            // Use the intelligent NLU system to process the command
+            const parsedCommand = this.processIntelligentCommand(command, this.devices);
+            
+            if (!parsedCommand || !parsedCommand.intent) {
+                this.showToast('Could not understand the command. Please try again.', 'error');
+                return;
+            }
 
-        // If no action is found, do nothing.
-        if (action === null) {
-            this.showToast('Could not understand the command.', 'error');
+            // Handle the parsed command based on intent
+            await this.executeCommand(parsedCommand);
+            
+        } catch (error) {
+            console.error('Voice command processing error:', error);
+            this.showToast('Error processing voice command.', 'error');
+        }
+    }
+
+    /**
+     * Intelligent Voice Command Processing System
+     * Transforms natural language voice commands into structured actions
+     * 
+     * @param {string} command - Raw voice command string
+     * @param {Array} devices - Array of available device objects
+     * @returns {Object} Structured command object with intent, targets, and state
+     */
+    processIntelligentCommand(command, devices) {
+        // Normalize the input command
+        const normalizedCommand = this.normalizeCommand(command);
+        
+        // Tokenize the command
+        const tokens = this.tokenizeCommand(normalizedCommand);
+        
+        // Extract intent from the command
+        const intent = this.extractIntent(tokens, normalizedCommand);
+        
+        if (!intent) {
+            return null;
+        }
+        
+        // Extract target devices
+        const deviceAnalysis = this.extractTargetDevices(tokens, normalizedCommand, devices);
+        
+        // Extract desired state (for set_state intents)
+        const state = intent === 'set_state' ? this.extractDesiredState(tokens, normalizedCommand) : null;
+        
+        // Build the structured response
+        const result = {
+            intent: intent,
+            targets: deviceAnalysis.targets,
+            original_command: command
+        };
+        
+        if (state !== null) {
+            result.state = state;
+        }
+        
+        // Handle ambiguity
+        if (deviceAnalysis.ambiguous) {
+            result.requires_clarification = true;
+            result.clarification_prompt = deviceAnalysis.clarificationPrompt;
+        }
+        
+        return result;
+    }
+
+    /**
+     * Normalize command by cleaning and standardizing the input
+     */
+    normalizeCommand(command) {
+        return command.toLowerCase()
+            .trim()
+            .replace(/[^\w\s]/g, ' ') // Remove punctuation
+            .replace(/\s+/g, ' ') // Normalize whitespace
+            .trim();
+    }
+
+    /**
+     * Tokenize command into individual words and phrases
+     */
+    tokenizeCommand(command) {
+        const words = command.split(' ');
+        const tokens = {
+            words: words,
+            bigrams: [],
+            trigrams: []
+        };
+        
+        // Generate bigrams (2-word phrases)
+        for (let i = 0; i < words.length - 1; i++) {
+            tokens.bigrams.push(words[i] + ' ' + words[i + 1]);
+        }
+        
+        // Generate trigrams (3-word phrases)
+        for (let i = 0; i < words.length - 2; i++) {
+            tokens.trigrams.push(words[i] + ' ' + words[i + 1] + ' ' + words[i + 2]);
+        }
+        
+        return tokens;
+    }
+
+    /**
+     * Extract intent from the command using pattern matching
+     */
+    extractIntent(tokens, command) {
+        const intentPatterns = {
+            set_state: [
+                // Turn on/off patterns
+                /\b(turn|switch|set)\s+(on|off)\b/,
+                /\b(activate|deactivate|enable|disable)\b/,
+                /\b(open|close|start|stop|shut)\b/,
+                /\b(power\s+(on|off))\b/,
+                
+                // Direct state commands
+                /\b(on|off)\b/,
+                
+                // Action verbs
+                /\b(toggle|flip|switch)\b/
+            ],
+            query_state: [
+                /\b(is|are)\s+.*\s+(on|off|running|active)\b/,
+                /\b(what\s+is|whats)\s+.*\s+state\b/,
+                /\b(status|state)\s+of\b/,
+                /\b(check|show|tell\s+me)\b/
+            ]
+        };
+        
+        // Check for query patterns first (more specific)
+        for (const pattern of intentPatterns.query_state) {
+            if (pattern.test(command)) {
+                return 'query_state';
+            }
+        }
+        
+        // Check for set_state patterns
+        for (const pattern of intentPatterns.set_state) {
+            if (pattern.test(command)) {
+                return 'set_state';
+            }
+        }
+        
+        return null;
+    }
+
+    /**
+     * Extract target devices from the command
+     */
+    extractTargetDevices(tokens, command, devices) {
+        // Device synonyms mapping
+        const deviceSynonyms = {
+            light: ['light', 'lamp', 'bulb', 'lighting'],
+            fan: ['fan', 'ventilator', 'blower'],
+            outlet: ['outlet', 'socket', 'plug', 'power point']
+        };
+        
+        // Location synonyms
+        const locationSynonyms = {
+            'living room': ['living room', 'living', 'lounge', 'front room'],
+            'kitchen': ['kitchen', 'cook'],
+            'bedroom': ['bedroom', 'bed room', 'room'],
+            'garden': ['garden', 'yard', 'outdoor', 'outside']
+        };
+        
+        let matchedDevices = [];
+        let isAmbiguous = false;
+        let clarificationPrompt = null;
+        
+        // Check for "all" commands
+        if (this.containsAllKeyword(command)) {
+            const deviceType = this.extractDeviceTypeFromAll(command, deviceSynonyms);
+            if (deviceType) {
+                matchedDevices = devices.filter(device => 
+                    this.deviceMatchesType(device.name, deviceType, deviceSynonyms)
+                );
+            } else {
+                matchedDevices = ['all'];
+            }
+            
+            return {
+                targets: Array.isArray(matchedDevices) && matchedDevices[0] === 'all' ? ['all'] : 
+                         matchedDevices.length > 0 ? matchedDevices.map(d => d.name) : [],
+                ambiguous: false
+            };
+        }
+        
+        // Score each device for relevance
+        const deviceScores = devices.map(device => ({
+            device: device,
+            score: this.calculateDeviceRelevanceScore(device, command, tokens, deviceSynonyms, locationSynonyms)
+        }));
+        
+        // Filter devices with positive scores
+        const relevantDevices = deviceScores.filter(ds => ds.score > 0);
+        
+        if (relevantDevices.length === 0) {
+            return { targets: [], ambiguous: false };
+        }
+        
+        // Sort by score (highest first)
+        relevantDevices.sort((a, b) => b.score - a.score);
+        
+        // Check for ambiguity
+        const topScore = relevantDevices[0].score;
+        const topDevices = relevantDevices.filter(ds => ds.score === topScore);
+        
+        if (topDevices.length > 1 && topScore < 100) { // 100 is exact match score
+            isAmbiguous = true;
+            const deviceNames = topDevices.map(ds => ds.device.name);
+            clarificationPrompt = `Which device did you mean? ${this.formatDeviceList(deviceNames)}`;
+            matchedDevices = topDevices.map(ds => ds.device);
+        } else {
+            matchedDevices = [relevantDevices[0].device];
+        }
+        
+        return {
+            targets: matchedDevices.map(d => d.name),
+            ambiguous: isAmbiguous,
+            clarificationPrompt: clarificationPrompt
+        };
+    }
+
+    /**
+     * Calculate relevance score for a device based on the command
+     */
+    calculateDeviceRelevanceScore(device, command, tokens, deviceSynonyms, locationSynonyms) {
+        let score = 0;
+        const deviceName = device.name.toLowerCase();
+        const deviceWords = deviceName.split(' ');
+        
+        // Exact device name match (highest score)
+        if (command.includes(deviceName)) {
+            return 100;
+        }
+        
+        // Check each word in the device name
+        for (const word of deviceWords) {
+            if (command.includes(word)) {
+                score += 30;
+            }
+        }
+        
+        // Check device type synonyms
+        for (const [type, synonyms] of Object.entries(deviceSynonyms)) {
+            if (this.deviceMatchesType(deviceName, type, deviceSynonyms)) {
+                for (const synonym of synonyms) {
+                    if (command.includes(synonym)) {
+                        score += 25;
+                        break;
+                    }
+                }
+            }
+        }
+        
+        // Check location matching
+        for (const [location, synonyms] of Object.entries(locationSynonyms)) {
+            if (deviceName.includes(location)) {
+                for (const synonym of synonyms) {
+                    if (command.includes(synonym)) {
+                        score += 40;
+                        break;
+                    }
+                }
+            }
+        }
+        
+        return score;
+    }
+
+    /**
+     * Extract desired state from the command
+     */
+    extractDesiredState(tokens, command) {
+        // State patterns
+        const onPatterns = [
+            /\b(turn|switch|set)\s+on\b/,
+            /\bon\b/,
+            /\b(activate|enable|start|open)\b/
+        ];
+        
+        const offPatterns = [
+            /\b(turn|switch|set)\s+off\b/,
+            /\boff\b/,
+            /\b(deactivate|disable|stop|close|shut)\b/
+        ];
+        
+        // Check for ON state
+        for (const pattern of onPatterns) {
+            if (pattern.test(command)) {
+                return 'ON';
+            }
+        }
+        
+        // Check for OFF state
+        for (const pattern of offPatterns) {
+            if (pattern.test(command)) {
+                return 'OFF';
+            }
+        }
+        
+        return null;
+    }
+
+    /**
+     * Helper methods
+     */
+    containsAllKeyword(command) {
+        return /\b(all|every|everything)\b/.test(command);
+    }
+
+    extractDeviceTypeFromAll(command, deviceSynonyms) {
+        for (const [type, synonyms] of Object.entries(deviceSynonyms)) {
+            for (const synonym of synonyms) {
+                if (command.includes(synonym)) {
+                    return type;
+                }
+            }
+        }
+        return null;
+    }
+
+    deviceMatchesType(deviceName, type, deviceSynonyms) {
+        const synonyms = deviceSynonyms[type] || [];
+        return synonyms.some(synonym => deviceName.includes(synonym));
+    }
+
+    formatDeviceList(deviceNames) {
+        if (deviceNames.length === 2) {
+            return `${deviceNames[0]} or ${deviceNames[1]}?`;
+        }
+        return `${deviceNames.slice(0, -1).join(', ')}, or ${deviceNames[deviceNames.length - 1]}?`;
+    }
+
+    /**
+     * Execute the parsed command
+     */
+    async executeCommand(parsedCommand) {
+        const { intent, targets, state, requires_clarification, clarification_prompt } = parsedCommand;
+        
+        if (requires_clarification) {
+            this.showToast(clarification_prompt, 'warning');
             return;
         }
-
-        // Step 2: Check for commands affecting multiple devices (like "all lights")
-        if (command.includes('all')) {
-            let targetDevices = [];
-            let deviceType = 'devices'; // Default name for the toast message
-
-            // Check for specific types like "lights" or "fans"
-            if (command.includes('light')) {
-                targetDevices = this.devices.filter(d => d.name.toLowerCase().includes('light'));
-                deviceType = 'lights';
-            } else if (command.includes('fan')) {
-                targetDevices = this.devices.filter(d => d.name.toLowerCase().includes('fan'));
-                deviceType = 'fans';
-            } else {
-                // If it just says "all" or "all devices", target everything
-                targetDevices = this.devices;
-            }
-
-            if (targetDevices.length > 0) {
-                // Update all target devices concurrently
-                await Promise.all(targetDevices.map(device => this.setDeviceState(device.id, action)));
-                this.showToast(`Turned ${action ? 'ON' : 'OFF'} all ${deviceType}.`, 'success');
-            } else {
-                this.showToast(`No ${deviceType} found.`, 'error');
-            }
-            return; // Exit after handling the "all" command
+        
+        if (intent === 'query_state') {
+            this.handleStateQuery(targets);
+            return;
         }
+        
+        if (intent === 'set_state') {
+            if (!state) {
+                this.showToast('Could not determine the desired state.', 'error');
+                return;
+            }
+            
+            await this.handleSetState(targets, state);
+        }
+    }
 
-        // Step 3: If not an "all" command, find a single, specific device
-        const targetDevice = this.devices.find(d => command.includes(d.name.toLowerCase()));
-
-        if (targetDevice) {
-            await this.setDeviceState(targetDevice.id, action);
-            this.showToast(`${targetDevice.name} turned ${action ? 'ON' : 'OFF'}`, 'success');
+    /**
+     * Handle state query commands
+     */
+    handleStateQuery(targets) {
+        if (targets.length === 0) {
+            this.showToast('No devices found to query.', 'error');
+            return;
+        }
+        
+        const targetDevices = targets.map(name => 
+            this.devices.find(d => d.name === name)
+        ).filter(d => d);
+        
+        if (targetDevices.length === 1) {
+            const device = targetDevices[0];
+            const status = device.state ? 'ON' : 'OFF';
+            this.showToast(`${device.name} is currently ${status}`, 'info');
         } else {
-            this.showToast('Device not found in your command.', 'error');
+            const statuses = targetDevices.map(d => 
+                `${d.name}: ${d.state ? 'ON' : 'OFF'}`
+            ).join(', ');
+            this.showToast(`Device statuses: ${statuses}`, 'info');
+        }
+    }
+
+    /**
+     * Handle set state commands
+     */
+    async handleSetState(targets, state) {
+        if (targets.length === 0) {
+            this.showToast('No devices found to control.', 'error');
+            return;
+        }
+        
+        const stateValue = state === 'ON' ? 1 : 0;
+        
+        // Handle "all" devices
+        if (targets.includes('all')) {
+            await Promise.all(this.devices.map(device => 
+                this.setDeviceState(device.id, stateValue)
+            ));
+            this.showToast(`Turned ${state} all devices.`, 'success');
+            return;
+        }
+        
+        // Handle specific devices
+        const targetDevices = targets.map(name => 
+            this.devices.find(d => d.name === name)
+        ).filter(d => d);
+        
+        if (targetDevices.length === 0) {
+            this.showToast('Device not found.', 'error');
+            return;
+        }
+        
+        await Promise.all(targetDevices.map(device => 
+            this.setDeviceState(device.id, stateValue)
+        ));
+        
+        if (targetDevices.length === 1) {
+            this.showToast(`${targetDevices[0].name} turned ${state}`, 'success');
+        } else {
+            const deviceNames = targetDevices.map(d => d.name).join(', ');
+            this.showToast(`Turned ${state}: ${deviceNames}`, 'success');
         }
     }
 

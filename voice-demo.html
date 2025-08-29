@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice Command System Demo</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .demo-container {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+        .command-input {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+            margin-bottom: 15px;
+        }
+        .test-button {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        .test-button:hover {
+            background: #2563eb;
+        }
+        .result-box {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 6px;
+            padding: 20px;
+            margin-top: 15px;
+            white-space: pre-wrap;
+            font-family: 'Courier New', monospace;
+        }
+        .example-commands {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        .command-category {
+            background: #f1f5f9;
+            padding: 15px;
+            border-radius: 8px;
+        }
+        .command-category h4 {
+            margin: 0 0 10px 0;
+            color: #1e40af;
+        }
+        .command-example {
+            background: white;
+            padding: 8px 12px;
+            margin: 5px 0;
+            border-radius: 4px;
+            cursor: pointer;
+            border: 1px solid #e2e8f0;
+            transition: all 0.2s;
+        }
+        .command-example:hover {
+            background: #e0e7ff;
+            border-color: #3b82f6;
+        }
+        .devices-list {
+            background: #ecfdf5;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .device-item {
+            display: inline-block;
+            background: #10b981;
+            color: white;
+            padding: 6px 12px;
+            margin: 3px;
+            border-radius: 20px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="demo-container">
+        <h1>🎤 Intelligent Voice Command System Demo</h1>
+        <p>Test the natural language understanding capabilities of the ESP32 home automation system.</p>
+        
+        <div class="devices-list">
+            <h3>Available Devices:</h3>
+            <span class="device-item">Living Room Light</span>
+            <span class="device-item">Kitchen Fan</span>
+            <span class="device-item">Bedroom Outlet</span>
+            <span class="device-item">Garden Light</span>
+        </div>
+
+        <div>
+            <h3>Test a Command:</h3>
+            <input type="text" id="commandInput" class="command-input" 
+                   placeholder="Enter a voice command (e.g., 'Turn on the living room light')" />
+            <button onclick="testCommand()" class="test-button">Process Command</button>
+            <button onclick="clearResult()" class="test-button" style="background: #6b7280;">Clear</button>
+        </div>
+
+        <div id="result" class="result-box" style="display: none;"></div>
+    </div>
+
+    <div class="demo-container">
+        <h2>📝 Example Commands</h2>
+        <p>Click any example below to test it:</p>
+        
+        <div class="example-commands">
+            <div class="command-category">
+                <h4>Basic Control</h4>
+                <div class="command-example" onclick="setCommand('Turn on the living room light')">
+                    Turn on the living room light
+                </div>
+                <div class="command-example" onclick="setCommand('Switch off the kitchen fan')">
+                    Switch off the kitchen fan
+                </div>
+                <div class="command-example" onclick="setCommand('Activate the bedroom outlet')">
+                    Activate the bedroom outlet
+                </div>
+            </div>
+
+            <div class="command-category">
+                <h4>Synonym Recognition</h4>
+                <div class="command-example" onclick="setCommand('Turn on the lamp in the living room')">
+                    Turn on the lamp in the living room
+                </div>
+                <div class="command-example" onclick="setCommand('Switch off the socket in the bedroom')">
+                    Switch off the socket in the bedroom
+                </div>
+                <div class="command-example" onclick="setCommand('Start the ventilator')">
+                    Start the ventilator
+                </div>
+            </div>
+
+            <div class="command-category">
+                <h4>Flexible Phrasing</h4>
+                <div class="command-example" onclick="setCommand('Shut down the fan in the kitchen')">
+                    Shut down the fan in the kitchen
+                </div>
+                <div class="command-example" onclick="setCommand('Power on the garden lamp')">
+                    Power on the garden lamp
+                </div>
+                <div class="command-example" onclick="setCommand('Deactivate the outlet')">
+                    Deactivate the outlet
+                </div>
+            </div>
+
+            <div class="command-category">
+                <h4>State Queries</h4>
+                <div class="command-example" onclick="setCommand('Is the garden light on?')">
+                    Is the garden light on?
+                </div>
+                <div class="command-example" onclick="setCommand('What is the status of the kitchen fan?')">
+                    What is the status of the kitchen fan?
+                </div>
+                <div class="command-example" onclick="setCommand('Check the bedroom outlet')">
+                    Check the bedroom outlet
+                </div>
+            </div>
+
+            <div class="command-category">
+                <h4>Bulk Operations</h4>
+                <div class="command-example" onclick="setCommand('Turn off all lights')">
+                    Turn off all lights
+                </div>
+                <div class="command-example" onclick="setCommand('Switch on everything')">
+                    Switch on everything
+                </div>
+                <div class="command-example" onclick="setCommand('Shut down all devices')">
+                    Shut down all devices
+                </div>
+            </div>
+
+            <div class="command-category">
+                <h4>Ambiguous Commands</h4>
+                <div class="command-example" onclick="setCommand('Turn on the light')">
+                    Turn on the light
+                </div>
+                <div class="command-example" onclick="setCommand('Switch off the fan')">
+                    Switch off the fan
+                </div>
+                <div class="command-example" onclick="setCommand('Is the outlet running?')">
+                    Is the outlet running?
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Mock devices for demo
+        const mockDevices = [
+            { id: 1, name: 'Living Room Light', gpio: 2, state: 0 },
+            { id: 2, name: 'Kitchen Fan', gpio: 4, state: 1 },
+            { id: 3, name: 'Bedroom Outlet', gpio: 5, state: 0 },
+            { id: 4, name: 'Garden Light', gpio: 18, state: 1 }
+        ];
+
+        // Copy the intelligent command processing system from app.js
+        function processIntelligentCommand(command, devices) {
+            const normalizedCommand = normalizeCommand(command);
+            const tokens = tokenizeCommand(normalizedCommand);
+            const intent = extractIntent(tokens, normalizedCommand);
+            
+            if (!intent) {
+                return null;
+            }
+            
+            const deviceAnalysis = extractTargetDevices(tokens, normalizedCommand, devices);
+            const state = intent === 'set_state' ? extractDesiredState(tokens, normalizedCommand) : null;
+            
+            const result = {
+                intent: intent,
+                targets: deviceAnalysis.targets,
+                original_command: command
+            };
+            
+            if (state !== null) {
+                result.state = state;
+            }
+            
+            if (deviceAnalysis.ambiguous) {
+                result.requires_clarification = true;
+                result.clarification_prompt = deviceAnalysis.clarificationPrompt;
+            }
+            
+            return result;
+        }
+
+        function normalizeCommand(command) {
+            return command.toLowerCase()
+                .trim()
+                .replace(/[^\w\s]/g, ' ')
+                .replace(/\s+/g, ' ')
+                .trim();
+        }
+
+        function tokenizeCommand(command) {
+            const words = command.split(' ');
+            const tokens = {
+                words: words,
+                bigrams: [],
+                trigrams: []
+            };
+            
+            for (let i = 0; i < words.length - 1; i++) {
+                tokens.bigrams.push(words[i] + ' ' + words[i + 1]);
+            }
+            
+            for (let i = 0; i < words.length - 2; i++) {
+                tokens.trigrams.push(words[i] + ' ' + words[i + 1] + ' ' + words[i + 2]);
+            }
+            
+            return tokens;
+        }
+
+        function extractIntent(tokens, command) {
+            const intentPatterns = {
+                set_state: [
+                    /\b(turn|switch|set)\s+(on|off)\b/,
+                    /\b(activate|deactivate|enable|disable)\b/,
+                    /\b(open|close|start|stop|shut)\b/,
+                    /\b(power\s+(on|off))\b/,
+                    /\b(on|off)\b/,
+                    /\b(toggle|flip|switch)\b/
+                ],
+                query_state: [
+                    /\b(is|are)\s+.*\s+(on|off|running|active)\b/,
+                    /\b(what\s+is|whats)\s+.*\s+state\b/,
+                    /\b(status|state)\s+of\b/,
+                    /\b(check|show|tell\s+me)\b/
+                ]
+            };
+            
+            for (const pattern of intentPatterns.query_state) {
+                if (pattern.test(command)) {
+                    return 'query_state';
+                }
+            }
+            
+            for (const pattern of intentPatterns.set_state) {
+                if (pattern.test(command)) {
+                    return 'set_state';
+                }
+            }
+            
+            return null;
+        }
+
+        function extractTargetDevices(tokens, command, devices) {
+            const deviceSynonyms = {
+                light: ['light', 'lamp', 'bulb', 'lighting'],
+                fan: ['fan', 'ventilator', 'blower'],
+                outlet: ['outlet', 'socket', 'plug', 'power point']
+            };
+            
+            const locationSynonyms = {
+                'living room': ['living room', 'living', 'lounge', 'front room'],
+                'kitchen': ['kitchen', 'cook'],
+                'bedroom': ['bedroom', 'bed room', 'room'],
+                'garden': ['garden', 'yard', 'outdoor', 'outside']
+            };
+            
+            let matchedDevices = [];
+            let isAmbiguous = false;
+            let clarificationPrompt = null;
+            
+            if (containsAllKeyword(command)) {
+                const deviceType = extractDeviceTypeFromAll(command, deviceSynonyms);
+                if (deviceType) {
+                    matchedDevices = devices.filter(device => 
+                        deviceMatchesType(device.name, deviceType, deviceSynonyms)
+                    );
+                } else {
+                    matchedDevices = ['all'];
+                }
+                
+                return {
+                    targets: Array.isArray(matchedDevices) && matchedDevices[0] === 'all' ? ['all'] : 
+                             matchedDevices.length > 0 ? matchedDevices.map(d => d.name) : [],
+                    ambiguous: false
+                };
+            }
+            
+            const deviceScores = devices.map(device => ({
+                device: device,
+                score: calculateDeviceRelevanceScore(device, command, tokens, deviceSynonyms, locationSynonyms)
+            }));
+            
+            const relevantDevices = deviceScores.filter(ds => ds.score > 0);
+            
+            if (relevantDevices.length === 0) {
+                return { targets: [], ambiguous: false };
+            }
+            
+            relevantDevices.sort((a, b) => b.score - a.score);
+            
+            const topScore = relevantDevices[0].score;
+            const topDevices = relevantDevices.filter(ds => ds.score === topScore);
+            
+            if (topDevices.length > 1 && topScore < 100) {
+                isAmbiguous = true;
+                const deviceNames = topDevices.map(ds => ds.device.name);
+                clarificationPrompt = `Which device did you mean? ${formatDeviceList(deviceNames)}`;
+                matchedDevices = topDevices.map(ds => ds.device);
+            } else {
+                matchedDevices = [relevantDevices[0].device];
+            }
+            
+            return {
+                targets: matchedDevices.map(d => d.name),
+                ambiguous: isAmbiguous,
+                clarificationPrompt: clarificationPrompt
+            };
+        }
+
+        function calculateDeviceRelevanceScore(device, command, tokens, deviceSynonyms, locationSynonyms) {
+            let score = 0;
+            const deviceName = device.name.toLowerCase();
+            const deviceWords = deviceName.split(' ');
+            
+            if (command.includes(deviceName)) {
+                return 100;
+            }
+            
+            for (const word of deviceWords) {
+                if (command.includes(word)) {
+                    score += 30;
+                }
+            }
+            
+            for (const [type, synonyms] of Object.entries(deviceSynonyms)) {
+                if (deviceMatchesType(deviceName, type, deviceSynonyms)) {
+                    for (const synonym of synonyms) {
+                        if (command.includes(synonym)) {
+                            score += 25;
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            for (const [location, synonyms] of Object.entries(locationSynonyms)) {
+                if (deviceName.includes(location)) {
+                    for (const synonym of synonyms) {
+                        if (command.includes(synonym)) {
+                            score += 40;
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            return score;
+        }
+
+        function extractDesiredState(tokens, command) {
+            const onPatterns = [
+                /\b(turn|switch|set)\s+on\b/,
+                /\bon\b/,
+                /\b(activate|enable|start|open)\b/
+            ];
+            
+            const offPatterns = [
+                /\b(turn|switch|set)\s+off\b/,
+                /\boff\b/,
+                /\b(deactivate|disable|stop|close|shut)\b/
+            ];
+            
+            for (const pattern of onPatterns) {
+                if (pattern.test(command)) {
+                    return 'ON';
+                }
+            }
+            
+            for (const pattern of offPatterns) {
+                if (pattern.test(command)) {
+                    return 'OFF';
+                }
+            }
+            
+            return null;
+        }
+
+        function containsAllKeyword(command) {
+            return /\b(all|every|everything)\b/.test(command);
+        }
+
+        function extractDeviceTypeFromAll(command, deviceSynonyms) {
+            for (const [type, synonyms] of Object.entries(deviceSynonyms)) {
+                for (const synonym of synonyms) {
+                    if (command.includes(synonym)) {
+                        return type;
+                    }
+                }
+            }
+            return null;
+        }
+
+        function deviceMatchesType(deviceName, type, deviceSynonyms) {
+            const synonyms = deviceSynonyms[type] || [];
+            return synonyms.some(synonym => deviceName.includes(synonym));
+        }
+
+        function formatDeviceList(deviceNames) {
+            if (deviceNames.length === 2) {
+                return `${deviceNames[0]} or ${deviceNames[1]}?`;
+            }
+            return `${deviceNames.slice(0, -1).join(', ')}, or ${deviceNames[deviceNames.length - 1]}?`;
+        }
+
+        // Demo UI functions
+        function setCommand(command) {
+            document.getElementById('commandInput').value = command;
+            testCommand();
+        }
+
+        function testCommand() {
+            const command = document.getElementById('commandInput').value.trim();
+            if (!command) return;
+
+            const result = processIntelligentCommand(command, mockDevices);
+            
+            const resultDiv = document.getElementById('result');
+            resultDiv.style.display = 'block';
+            
+            if (result) {
+                resultDiv.innerHTML = `<strong>✅ Command Processed Successfully!</strong>
+
+Input: "${command}"
+
+Parsed Result:
+${JSON.stringify(result, null, 2)}
+
+Interpretation:
+• Intent: ${result.intent === 'set_state' ? 'Control device state' : 'Query device status'}
+• Target(s): ${result.targets.join(', ')}
+${result.state ? `• Desired State: ${result.state}` : ''}
+${result.requires_clarification ? `• ⚠️ Clarification Needed: ${result.clarification_prompt}` : ''}`;
+            } else {
+                resultDiv.innerHTML = `<strong>❌ Command Not Understood</strong>
+
+Input: "${command}"
+
+The system could not parse this command. Try:
+• Using clear action words (turn on/off, switch, activate, etc.)
+• Specifying a device name or location
+• Asking about device status with "is" or "check"`;
+            }
+        }
+
+        function clearResult() {
+            document.getElementById('result').style.display = 'none';
+            document.getElementById('commandInput').value = '';
+        }
+
+        // Allow Enter key to test command
+        document.getElementById('commandInput').addEventListener('keypress', function(event) {
+            if (event.key === 'Enter') {
+                testCommand();
+            }
+        });
+    </script>
+</body>
+</html>
