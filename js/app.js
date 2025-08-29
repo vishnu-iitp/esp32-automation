@@ -110,6 +110,23 @@ class HomeAutomationApp {
 
         this.showToast(`${device.name} turned ${newState ? 'ON' : 'OFF'}`, 'success');
     }
+
+    async setDeviceState(deviceId, newState) {
+        const device = this.devices.find(d => d.id === deviceId);
+        if (!device || device.state === newState) return; // Do nothing if device not found or state is already correct
+
+        const { error } = await this.supabase
+            .from('devices')
+            .update({ state: newState, updated_at: new Date() })
+            .eq('id', deviceId);
+
+        if (error) {
+            this.showToast(`Failed to update ${device.name}`, 'error');
+            return;
+        }
+
+        // We don't show a toast here to avoid spamming notifications for "all" commands
+    }
     
     updateConnectionStatus(status, message) {
         const statusBanner = document.getElementById('statusBanner');
@@ -151,7 +168,7 @@ class HomeAutomationApp {
                     <h3>${device.name}</h3>
                     <div class="device-gpio">GPIO ${device.gpio}</div>
                 </div>
-                <div class="device-icon">${icons[type] || '⚡'}</div>
+                <div class="device-icon">${icons[type] || '⚡️'}</div>
             </div>
             <div class="device-controls">
                 <div class="device-status">${device.state ? 'ON' : 'OFF'}</div>
@@ -238,21 +255,55 @@ class HomeAutomationApp {
     }
 
     async processVoiceCommand(command) {
+        // Step 1: Determine the action (turn on or off)
         let action = null;
         if (command.includes('turn on') || command.includes('switch on')) {
-            action = 1;
+            action = 1; // ON
         } else if (command.includes('turn off') || command.includes('switch off')) {
-            action = 0;
+            action = 0; // OFF
         }
 
-        if (action === null) return;
-        
-        const device = this.devices.find(d => command.includes(d.name.toLowerCase()));
-        
-        if (device) {
-            await this.toggleDevice(device.id);
+        // If no action is found, do nothing.
+        if (action === null) {
+            this.showToast('Could not understand the command.', 'error');
+            return;
+        }
+
+        // Step 2: Check for commands affecting multiple devices (like "all lights")
+        if (command.includes('all')) {
+            let targetDevices = [];
+            let deviceType = 'devices'; // Default name for the toast message
+
+            // Check for specific types like "lights" or "fans"
+            if (command.includes('light')) {
+                targetDevices = this.devices.filter(d => d.name.toLowerCase().includes('light'));
+                deviceType = 'lights';
+            } else if (command.includes('fan')) {
+                targetDevices = this.devices.filter(d => d.name.toLowerCase().includes('fan'));
+                deviceType = 'fans';
+            } else {
+                // If it just says "all" or "all devices", target everything
+                targetDevices = this.devices;
+            }
+
+            if (targetDevices.length > 0) {
+                // Update all target devices concurrently
+                await Promise.all(targetDevices.map(device => this.setDeviceState(device.id, action)));
+                this.showToast(`Turned ${action ? 'ON' : 'OFF'} all ${deviceType}.`, 'success');
+            } else {
+                this.showToast(`No ${deviceType} found.`, 'error');
+            }
+            return; // Exit after handling the "all" command
+        }
+
+        // Step 3: If not an "all" command, find a single, specific device
+        const targetDevice = this.devices.find(d => command.includes(d.name.toLowerCase()));
+
+        if (targetDevice) {
+            await this.setDeviceState(targetDevice.id, action);
+            this.showToast(`${targetDevice.name} turned ${action ? 'ON' : 'OFF'}`, 'success');
         } else {
-            this.showToast('Device not found', 'error');
+            this.showToast('Device not found in your command.', 'error');
         }
     }
 
