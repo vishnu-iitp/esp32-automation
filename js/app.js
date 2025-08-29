@@ -1085,6 +1085,7 @@ class HomeAutomationApp {
                         gpio: gpio,
                         state: 0, // Default to OFF
                         device_type: type,
+                        user_id: this.currentUser.id
                         //created_at: new Date().toISOString(),
                         //updated_at: new Date().toISOString()
                     }
