@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Authentication Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .test-item { margin: 10px 0; }
+        .pass { color: green; }
+        .fail { color: red; }
+    </style>
+</head>
+<body>
+    <h1>Authentication System Test</h1>
+    <div id="results"></div>
+    
+    <script>
+        function runTests() {
+            const results = document.getElementById('results');
+            const tests = [
+                {
+                    name: 'Supabase constants defined',
+                    test: () => typeof SUPABASE_URL !== 'undefined' && typeof SUPABASE_ANON_KEY !== 'undefined'
+                },
+                {
+                    name: 'Auth container exists',
+                    test: () => document.getElementById('auth-container') !== null
+                },
+                {
+                    name: 'Login form exists',
+                    test: () => document.getElementById('login-form') !== null
+                },
+                {
+                    name: 'Signup form exists',
+                    test: () => document.getElementById('signup-form') !== null
+                },
+                {
+                    name: 'Login email input exists',
+                    test: () => document.getElementById('login-email') !== null
+                },
+                {
+                    name: 'Login password input exists',
+                    test: () => document.getElementById('login-password') !== null
+                },
+                {
+                    name: 'Signup email input exists',
+                    test: () => document.getElementById('signup-email') !== null
+                },
+                {
+                    name: 'Signup password input exists',
+                    test: () => document.getElementById('signup-password') !== null
+                },
+                {
+                    name: 'Signup confirm input exists',
+                    test: () => document.getElementById('signup-confirm') !== null
+                },
+                {
+                    name: 'Login button exists',
+                    test: () => document.getElementById('login-btn') !== null
+                },
+                {
+                    name: 'Signup button exists',
+                    test: () => document.getElementById('signup-btn') !== null
+                },
+                {
+                    name: 'Logout button exists',
+                    test: () => document.getElementById('logoutBtn') !== null
+                },
+                {
+                    name: 'Show signup link exists',
+                    test: () => document.getElementById('show-signup') !== null
+                },
+                {
+                    name: 'Show login link exists',
+                    test: () => document.getElementById('show-login') !== null
+                },
+                {
+                    name: 'Main container exists and has hidden class',
+                    test: () => {
+                        const container = document.querySelector('.container');
+                        return container && container.classList.contains('hidden');
+                    }
+                },
+                {
+                    name: 'Auth container is visible (no hidden class)',
+                    test: () => {
+                        const authContainer = document.getElementById('auth-container');
+                        return authContainer && !authContainer.classList.contains('hidden');
+                    }
+                }
+            ];
+
+            let passCount = 0;
+            
+            tests.forEach(test => {
+                const passed = test.test();
+                const div = document.createElement('div');
+                div.className = `test-item ${passed ? 'pass' : 'fail'}`;
+                div.textContent = `${passed ? '✓' : '✗'} ${test.name}`;
+                results.appendChild(div);
+                
+                if (passed) passCount++;
+            });
+            
+            const summary = document.createElement('div');
+            summary.style.marginTop = '20px';
+            summary.style.fontWeight = 'bold';
+            summary.textContent = `Tests passed: ${passCount}/${tests.length}`;
+            summary.className = passCount === tests.length ? 'pass' : 'fail';
+            results.appendChild(summary);
+        }
+
+        // Load the main app scripts and run tests
+        function loadScripts() {
+            const supabaseScript = document.createElement('script');
+            supabaseScript.src = 'https://unpkg.com/@supabase/supabase-js@2';
+            supabaseScript.onload = () => {
+                const appScript = document.createElement('script');
+                appScript.src = 'js/app.js';
+                appScript.onload = () => {
+                    // Load the main HTML content
+                    fetch('index.html')
+                        .then(response => response.text())
+                        .then(html => {
+                            const parser = new DOMParser();
+                            const doc = parser.parseFromString(html, 'text/html');
+                            
+                            // Extract auth container and main container
+                            const authContainer = doc.getElementById('auth-container');
+                            const mainContainer = doc.querySelector('.container');
+                            
+                            if (authContainer) {
+                                document.body.appendChild(authContainer.cloneNode(true));
+                            }
+                            if (mainContainer) {
+                                document.body.appendChild(mainContainer.cloneNode(true));
+                            }
+                            
+                            setTimeout(runTests, 1000);
+                        });
+                };
+                document.head.appendChild(appScript);
+            };
+            document.head.appendChild(supabaseScript);
+        }
+
+        loadScripts();
+    </script>
+</body>
+</html>

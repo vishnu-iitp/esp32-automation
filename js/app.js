@@ -1,3 +1,7 @@
+// Supabase Configuration
+const SUPABASE_URL = 'https://ahmseisassvgxbbccqyd.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFobXNlaXNhc3N2Z3hiYmNjcXlkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTYzOTgyNDEsImV4cCI6MjA3MTk3NDI0MX0.VR3dkEUvDzkH8s9YXQq3E3XCRSu62ldE1Qs9-DI1CaI';
+
 class HomeAutomationApp {
     constructor() {
         this.supabase = null;
@@ -6,28 +10,52 @@ class HomeAutomationApp {
         this.recognition = null;
         this.isProcessingVoiceCommand = false;
         this.deferredPrompt = null; // For PWA installation
+        this.currentUser = null;
+        this.hasShownWelcome = false;
         
         this.init();
     }
 
     async init() {
         this.setupEventListeners();
-        this.loadSupabaseConfig();
         await this.initializeSupabase();
-        await this.fetchInitialDevices();
-        this.setupRealtimeSubscriptions();
         this.setupVoiceControl();
         this.setupPWAInstallation(); // Add PWA setup
         this.handleURLParameters(); // Handle app shortcuts
         this.handleOnlineStatus(); // Setup offline/online handling
+        
+        // Initialize authentication state management
+        await this.handleAuthStateChange();
     }
 
     setupEventListeners() {
-        document.getElementById('settingsBtn').addEventListener('click', () => this.openSettings());
-        document.getElementById('closeSettings').addEventListener('click', () => this.closeSettings());
-        document.getElementById('cancelSettings').addEventListener('click', () => this.closeSettings());
-        document.getElementById('saveSettings').addEventListener('click', () => this.saveSettings());
+        // Authentication event listeners
+        document.getElementById('login-btn').addEventListener('click', () => this.handleLogin());
+        document.getElementById('signup-btn').addEventListener('click', () => this.handleSignUp());
+        document.getElementById('logoutBtn').addEventListener('click', () => this.handleLogout());
+        document.getElementById('show-signup').addEventListener('click', (e) => {
+            e.preventDefault();
+            this.showSignUpForm();
+        });
+        document.getElementById('show-login').addEventListener('click', (e) => {
+            e.preventDefault();
+            this.showLoginForm();
+        });
 
+        // Handle Enter key for login form
+        document.getElementById('login-email').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') this.handleLogin();
+        });
+        document.getElementById('login-password').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') this.handleLogin();
+        });
+
+        // Handle Enter key for signup form
+        document.getElementById('signup-confirm').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') this.handleSignUp();
+        });
+
+        // Voice control event listeners
         document.getElementById('voiceBtn').addEventListener('click', () => this.toggleVoiceControl());
         document.getElementById('stopVoiceBtn').addEventListener('click', () => this.stopVoiceControl());
 
@@ -54,42 +82,20 @@ class HomeAutomationApp {
             }
         });
 
-        document.getElementById('settingsModal').addEventListener('click', (e) => {
-            if (e.target.classList.contains('modal-overlay')) this.closeSettings();
-        });
-
         document.getElementById('addDeviceModal').addEventListener('click', (e) => {
             if (e.target.classList.contains('modal-overlay')) this.closeAddDeviceModal();
         });
     }
 
-    loadSupabaseConfig() {
-        const supabaseUrl = localStorage.getItem('supabaseUrl');
-        const supabaseKey = localStorage.getItem('supabaseKey');
-        
-        if (supabaseUrl && supabaseKey) {
-            document.getElementById('supabaseUrl').value = supabaseUrl;
-            document.getElementById('supabaseKey').value = supabaseKey;
-        }
-    }
-
     async initializeSupabase() {
-        const supabaseUrl = localStorage.getItem('supabaseUrl');
-        const supabaseKey = localStorage.getItem('supabaseKey');
-
-        if (!supabaseUrl || !supabaseKey) {
-            this.updateConnectionStatus('disconnected', 'Please configure Supabase settings');
-            return;
-        }
-
         try {
-            this.supabase = supabase.createClient(supabaseUrl, supabaseKey);
+            this.supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
             this.updateConnectionStatus('connected', 'Connected to Supabase');
-            this.showToast('Successfully connected to Supabase!', 'success');
+            console.log('Supabase initialized successfully');
         } catch (error) {
             console.error('Supabase initialization error:', error);
             this.updateConnectionStatus('disconnected', 'Failed to connect to Supabase');
-            this.showToast('Failed to connect to Supabase. Check your configuration.', 'error');
+            this.showToast('Failed to connect to Supabase. Please try again.', 'error');
         }
     }
 
@@ -835,32 +841,192 @@ class HomeAutomationApp {
         }
     }
 
-    openSettings() {
-        document.getElementById('settingsModal').classList.add('active');
+    // =================== AUTHENTICATION METHODS ===================
+
+    async handleAuthStateChange() {
+        // Set up the auth state change listener
+        this.supabase.auth.onAuthStateChange((event, session) => {
+            console.log('Auth state changed:', event, session);
+            this.handleAuthSession(session);
+        });
+
+        // Check initial session
+        const { data: { session } } = await this.supabase.auth.getSession();
+        this.handleAuthSession(session);
     }
 
-    closeSettings() {
-        document.getElementById('settingsModal').classList.remove('active');
+    handleAuthSession(session) {
+        if (session) {
+            // User is logged in
+            this.currentUser = session.user;
+            this.showMainApp();
+            this.fetchInitialDevices();
+            this.setupRealtimeSubscriptions();
+            
+            // Only show welcome message for new logins, not initial page loads
+            if (session.user && !this.hasShownWelcome) {
+                this.showToast(`Welcome, ${session.user.email}!`, 'success');
+                this.hasShownWelcome = true;
+            }
+        } else {
+            // User is not logged in
+            this.currentUser = null;
+            this.showAuthContainer();
+            this.devices = [];
+            this.renderDevices();
+            this.hasShownWelcome = false;
+        }
     }
 
-    saveSettings() {
-        const supabaseUrl = document.getElementById('supabaseUrl').value.trim();
-        const supabaseKey = document.getElementById('supabaseKey').value.trim();
+    showMainApp() {
+        document.getElementById('auth-container').classList.add('hidden');
+        document.querySelector('.container').classList.remove('hidden');
+        document.getElementById('logoutBtn').style.display = 'flex';
+    }
 
-        if (!supabaseUrl || !supabaseKey) {
-            this.showToast('Please fill in all Supabase fields', 'error');
+    showAuthContainer() {
+        document.getElementById('auth-container').classList.remove('hidden');
+        document.querySelector('.container').classList.add('hidden');
+        document.getElementById('logoutBtn').style.display = 'none';
+    }
+
+    showSignUpForm() {
+        document.getElementById('login-form').classList.remove('active');
+        document.getElementById('signup-form').classList.add('active');
+    }
+
+    showLoginForm() {
+        document.getElementById('signup-form').classList.remove('active');
+        document.getElementById('login-form').classList.add('active');
+    }
+
+    async handleLogin() {
+        const email = document.getElementById('login-email').value.trim();
+        const password = document.getElementById('login-password').value;
+        const loginBtn = document.getElementById('login-btn');
+
+        if (!email || !password) {
+            this.showToast('Please fill in all fields', 'error');
             return;
         }
 
-        localStorage.setItem('supabaseUrl', supabaseUrl);
-        localStorage.setItem('supabaseKey', supabaseKey);
+        // Show loading state
+        const originalText = loginBtn.textContent;
+        loginBtn.textContent = 'Signing In...';
+        loginBtn.disabled = true;
 
-        this.closeSettings();
-        this.showToast('Settings saved! Reconnecting...', 'success');
-        
-        setTimeout(() => {
-            this.initializeSupabase();
-        }, 1000);
+        try {
+            const { data, error } = await this.supabase.auth.signInWithPassword({
+                email: email,
+                password: password
+            });
+
+            if (error) {
+                throw error;
+            }
+
+            // Clear form
+            document.getElementById('login-email').value = '';
+            document.getElementById('login-password').value = '';
+            this.hasShownWelcome = true; // Mark that we should show welcome message
+        } catch (error) {
+            console.error('Login error:', error);
+            let errorMessage = 'Login failed';
+            
+            if (error.message.includes('Invalid login credentials')) {
+                errorMessage = 'Invalid email or password';
+            } else if (error.message.includes('Email not confirmed')) {
+                errorMessage = 'Please check your email and confirm your account';
+            } else if (error.message) {
+                errorMessage = error.message;
+            }
+            
+            this.showToast(errorMessage, 'error');
+        } finally {
+            // Reset button state
+            loginBtn.textContent = originalText;
+            loginBtn.disabled = false;
+        }
+    }
+
+    async handleSignUp() {
+        const email = document.getElementById('signup-email').value.trim();
+        const password = document.getElementById('signup-password').value;
+        const confirmPassword = document.getElementById('signup-confirm').value;
+        const signupBtn = document.getElementById('signup-btn');
+
+        if (!email || !password || !confirmPassword) {
+            this.showToast('Please fill in all fields', 'error');
+            return;
+        }
+
+        if (password !== confirmPassword) {
+            this.showToast('Passwords do not match', 'error');
+            return;
+        }
+
+        if (password.length < 6) {
+            this.showToast('Password must be at least 6 characters', 'error');
+            return;
+        }
+
+        // Show loading state
+        const originalText = signupBtn.textContent;
+        signupBtn.textContent = 'Creating Account...';
+        signupBtn.disabled = true;
+
+        try {
+            const { data, error } = await this.supabase.auth.signUp({
+                email: email,
+                password: password
+            });
+
+            if (error) {
+                throw error;
+            }
+
+            // Clear form and switch to login
+            document.getElementById('signup-email').value = '';
+            document.getElementById('signup-password').value = '';
+            document.getElementById('signup-confirm').value = '';
+            
+            if (data.user && !data.session) {
+                this.showToast('Account created! Please check your email for verification.', 'success');
+                this.showLoginForm();
+            } else {
+                this.showToast('Account created successfully!', 'success');
+            }
+        } catch (error) {
+            console.error('Sign up error:', error);
+            let errorMessage = 'Sign up failed';
+            
+            if (error.message.includes('already registered')) {
+                errorMessage = 'An account with this email already exists';
+            } else if (error.message) {
+                errorMessage = error.message;
+            }
+            
+            this.showToast(errorMessage, 'error');
+        } finally {
+            // Reset button state
+            signupBtn.textContent = originalText;
+            signupBtn.disabled = false;
+        }
+    }
+
+    async handleLogout() {
+        try {
+            const { error } = await this.supabase.auth.signOut();
+            
+            if (error) {
+                throw error;
+            }
+
+            this.showToast('Logged out successfully', 'success');
+        } catch (error) {
+            console.error('Logout error:', error);
+            this.showToast('Logout failed', 'error');
+        }
     }
 
     showToast(message, type = 'success') {

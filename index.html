@@ -29,7 +29,7 @@
     <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
-    <div class="container">
+    <div class="container hidden">
         <!-- Header -->
         <header class="header">
             <div class="header-content">
@@ -42,9 +42,9 @@
                         <span class="voice-icon">🎤</span>
                         Voice Control
                     </button>
-                    <button class="btn btn-secondary" id="settingsBtn">
-                        <span class="settings-icon">⚙️</span>
-                        Settings
+                    <button class="btn btn-secondary" id="logoutBtn" style="display: none;">
+                        <span class="logout-icon">🚪</span>
+                        Logout
                     </button>
                 </div>
             </div>
@@ -84,54 +84,57 @@
         </div>
     </div>
 
-    <!-- Settings Modal -->
-    <div class="modal-overlay" id="settingsModal">
-        <div class="modal">
-            <div class="modal-header">
-                <h2>Settings</h2>
-                <button class="modal-close" id="closeSettings">&times;</button>
+    <!-- Authentication Container -->
+    <div id="auth-container" class="auth-container">
+        <div class="auth-content">
+            <div class="auth-header">
+                <h1 class="auth-title">
+                    <span class="title-icon">🏠</span>
+                    Smart Home
+                </h1>
+                <p class="auth-subtitle">Welcome to your Smart Home Control System</p>
             </div>
-            <div class="modal-body">
-                <div class="settings-section">
-                    <h3>Supabase Configuration</h3>
+            
+            <div class="auth-forms">
+                <!-- Login Form -->
+                <div id="login-form" class="auth-form active">
+                    <h2>Sign In</h2>
                     <div class="form-group">
-                        <label for="supabaseUrl">Supabase Project URL</label>
-                        <input type="url" id="supabaseUrl" placeholder="https://your-project.supabase.co">
-                        <small>Your Supabase project URL from the dashboard</small>
+                        <label for="login-email">Email</label>
+                        <input type="email" id="login-email" placeholder="Enter your email" required>
                     </div>
                     <div class="form-group">
-                        <label for="supabaseKey">Supabase Anon Key</label>
-                        <input type="password" id="supabaseKey" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...">
-                        <small>Your Supabase anonymous public key</small>
+                        <label for="login-password">Password</label>
+                        <input type="password" id="login-password" placeholder="Enter your password" required>
                     </div>
+                    <button class="btn btn-primary auth-btn" id="login-btn">Sign In</button>
+                    <p class="auth-switch">
+                        Don't have an account? 
+                        <a href="#" id="show-signup">Sign up here</a>
+                    </p>
                 </div>
                 
-                <div class="settings-section">
-                    <h3>Device Management</h3>
+                <!-- Sign Up Form -->
+                <div id="signup-form" class="auth-form">
+                    <h2>Create Account</h2>
                     <div class="form-group">
-                        <label for="deviceName">Device Name</label>
-                        <input type="text" id="deviceName" placeholder="Living Room Light">
+                        <label for="signup-email">Email</label>
+                        <input type="email" id="signup-email" placeholder="Enter your email" required>
                     </div>
                     <div class="form-group">
-                        <label for="deviceGpio">GPIO Pin</label>
-                        <input type="number" id="deviceGpio" placeholder="23" min="1" max="39">
+                        <label for="signup-password">Password</label>
+                        <input type="password" id="signup-password" placeholder="Create a password" required>
                     </div>
                     <div class="form-group">
-                        <label for="deviceType">Device Type</label>
-                        <select id="deviceType">
-                            <option value="light">💡 Light</option>
-                            <option value="fan">🌀 Fan</option>
-                            <option value="outlet">🔌 Outlet</option>
-                            <option value="motor">⚙️ Motor</option>
-                            <option value="heater">🔥 Heater</option>
-                            <option value="cooler">❄️ Cooler</option>
-                        </select>
+                        <label for="signup-confirm">Confirm Password</label>
+                        <input type="password" id="signup-confirm" placeholder="Confirm your password" required>
                     </div>
+                    <button class="btn btn-primary auth-btn" id="signup-btn">Create Account</button>
+                    <p class="auth-switch">
+                        Already have an account? 
+                        <a href="#" id="show-login">Sign in here</a>
+                    </p>
                 </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" id="cancelSettings">Cancel</button>
-                <button class="btn btn-primary" id="saveSettings">Save Settings</button>
             </div>
         </div>
     </div>
