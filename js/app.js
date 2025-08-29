@@ -859,8 +859,8 @@ class HomeAutomationApp {
                         gpio: gpio,
                         state: 0, // Default to OFF
                         device_type: type,
-                        created_at: new Date().toISOString(),
-                        updated_at: new Date().toISOString()
+                        //created_at: new Date().toISOString(),
+                        //updated_at: new Date().toISOString()
                     }
                 ])
                 .select();
