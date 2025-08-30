@@ -344,7 +344,7 @@ class HomeAutomationApp {
             document.getElementById('saveClaimDevice').textContent = 'Claiming...';
 
             // Call the claim-device Edge Function
-            const { data, error } = await this.supabase.functions.invoke('claim-device', {
+            const { data, error } = await this.supabase.functions.invoke('register-unclaimed-device', {
                 body: { mac_address: macAddress }
             });
 
