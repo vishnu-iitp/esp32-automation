@@ -1385,16 +1385,10 @@ class HomeAutomationApp {
             return;
         }
 
-        // Check for duplicate GPIO and MAC
+        // Check for duplicate GPIO only (allow same MAC address for different devices)
         const existingDevice = this.devices.find(d => d.gpio === gpio);
         if (existingDevice) {
             this.showToast(`GPIO ${gpio} is already in use by "${existingDevice.name}"`, 'error');
-            return;
-        }
-
-        const existingMacDevice = this.devices.find(d => d.mac_address === macAddress);
-        if (existingMacDevice) {
-            this.showToast(`MAC address ${macAddress} is already in use by "${existingMacDevice.name}"`, 'error');
             return;
         }
 

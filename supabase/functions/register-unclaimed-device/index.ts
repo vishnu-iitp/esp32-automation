@@ -41,9 +41,10 @@ serve(async (req)=>{
       });
     }
     const normalizedMac = mac_address.toUpperCase();
-    // Check if device already exists in unclaimed_devices
-    const { data: existingUnclaimed } = await supabaseClient.from('unclaimed_devices').select('*').eq('mac_address', normalizedMac).single();
-    if (existingUnclaimed) {
+    // Check if device with this MAC already exists in unclaimed_devices (allow multiple devices with same MAC)
+    const { data: existingUnclaimed } = await supabaseClient.from('unclaimed_devices').select('*').eq('mac_address', normalizedMac);
+    if (existingUnclaimed && existingUnclaimed.length > 0) {
+      // Allow multiple devices with same MAC, but return existing record message
       return new Response(JSON.stringify({
         success: true,
         message: 'Device already registered as unclaimed',
@@ -55,9 +56,9 @@ serve(async (req)=>{
         }
       });
     }
-    // Check if device already exists in devices table
-    const { data: existingDevice } = await supabaseClient.from('devices').select('*').eq('mac_address', normalizedMac).single();
-    if (existingDevice) {
+    // Check if device with this MAC and GPIO already exists in devices table
+    const { data: existingDevices } = await supabaseClient.from('devices').select('*').eq('mac_address', normalizedMac).eq('gpio', gpio);
+    if (existingDevices && existingDevices.length > 0) {
       return new Response(JSON.stringify({
         success: true,
         message: 'Device already exists in devices table',

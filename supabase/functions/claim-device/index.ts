@@ -47,9 +47,9 @@ serve(async (req)=>{
       });
     }
     const normalizedMac = mac_address.trim().toUpperCase();
-    // 3. Find the device in the 'devices' table
-    const { data: device, error: findError } = await supabaseClient.from('devices').select('id, user_id').eq('mac_address', normalizedMac).single();
-    if (findError || !device) {
+    // 3. Find an unclaimed device in the 'devices' table
+    const { data: devices, error: findError } = await supabaseClient.from('devices').select('id, user_id').eq('mac_address', normalizedMac);
+    if (findError || !devices || devices.length === 0) {
       return new Response(JSON.stringify({
         error: 'Device not found. Make sure the ESP32 is online and has registered itself.'
       }), {
@@ -60,10 +60,26 @@ serve(async (req)=>{
         }
       });
     }
-    // 4. Check if the device is already claimed by another user
-    if (device.user_id && device.user_id !== user.id) {
+    
+    // Find the first unclaimed device (user_id is null)
+    const unclaimedDevice = devices.find(d => !d.user_id);
+    if (!unclaimedDevice) {
+      // Check if any device is already claimed by the current user
+      const userDevice = devices.find(d => d.user_id === user.id);
+      if (userDevice) {
+        return new Response(JSON.stringify({
+          error: 'You have already claimed a device with this MAC address.'
+        }), {
+          status: 409,
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json'
+          }
+        });
+      }
+      
       return new Response(JSON.stringify({
-        error: 'This device has already been claimed by another user.'
+        error: 'All devices with this MAC address have already been claimed by other users.'
       }), {
         status: 409,
         headers: {
@@ -72,11 +88,11 @@ serve(async (req)=>{
         }
       });
     }
-    // 5. Update the device with the current user's ID
+    // 5. Update the specific unclaimed device with the current user's ID
     const { error: updateError } = await supabaseClient.from('devices').update({
       user_id: user.id,
       updated_at: new Date().toISOString()
-    }).eq('mac_address', normalizedMac);
+    }).eq('id', unclaimedDevice.id);
     if (updateError) {
       console.error('Error updating device:', updateError);
       return new Response(JSON.stringify({
