@@ -59,11 +59,10 @@ class HomeAutomationApp {
         document.getElementById('voiceBtn').addEventListener('click', () => this.toggleVoiceControl());
         document.getElementById('stopVoiceBtn').addEventListener('click', () => this.stopVoiceControl());
 
-        // Add Device Modal Event Listeners
-        document.getElementById('addDeviceBtn').addEventListener('click', () => this.openAddDeviceModal());
-        document.getElementById('closeAddDevice').addEventListener('click', () => this.closeAddDeviceModal());
-        document.getElementById('cancelAddDevice').addEventListener('click', () => this.closeAddDeviceModal());
-        document.getElementById('saveAddDevice').addEventListener('click', () => this.addDevice());
+        // Claim Device Modal Event Listeners
+        document.getElementById('addDeviceBtn').addEventListener('click', () => this.openClaimDeviceModal());
+        document.getElementById('closeClaimDevice').addEventListener('click', () => this.closeClaimDeviceModal());
+        document.getElementById('cancelClaimDevice').addEventListener('click', () => this.closeClaimDeviceModal());
 
         // Rename Device Modal Event Listeners (will be added when modal is created)
         document.addEventListener('click', (e) => {
@@ -82,8 +81,8 @@ class HomeAutomationApp {
             }
         });
 
-        document.getElementById('addDeviceModal').addEventListener('click', (e) => {
-            if (e.target.classList.contains('modal-overlay')) this.closeAddDeviceModal();
+        document.getElementById('claimDeviceModal').addEventListener('click', (e) => {
+            if (e.target.classList.contains('modal-overlay')) this.closeClaimDeviceModal();
         });
     }
 
@@ -100,14 +99,17 @@ class HomeAutomationApp {
     }
 
     async fetchInitialDevices() {
-        if (!this.supabase) return;
-        const { data, error } = await this.supabase.from('devices').select('*');
+        if (!this.supabase || !this.currentUser) return;
+        const { data, error } = await this.supabase
+            .from('devices')
+            .select('*')
+            .eq('user_id', this.currentUser.id);
         if (error) {
             console.error('Error fetching devices:', error);
             this.showToast('Could not fetch devices', 'error');
             return;
         }
-        this.devices = data;
+        this.devices = data || [];
         this.renderDevices();
     }
 
@@ -882,44 +884,12 @@ class HomeAutomationApp {
         document.getElementById('auth-container').classList.add('hidden');
         document.querySelector('.container').classList.remove('hidden');
         document.getElementById('logoutBtn').style.display = 'flex';
-        
-        // Add device JWT button if it doesn't exist
-        this.addDeviceJWTButton();
     }
 
     showAuthContainer() {
         document.getElementById('auth-container').classList.remove('hidden');
         document.querySelector('.container').classList.add('hidden');
         document.getElementById('logoutBtn').style.display = 'none';
-        
-        // Remove device JWT button
-        this.removeDeviceJWTButton();
-    }
-
-    addDeviceJWTButton() {
-        // Check if button already exists
-        if (document.getElementById('deviceJWTBtn')) return;
-        
-        const deviceJWTBtn = document.createElement('button');
-        deviceJWTBtn.id = 'deviceJWTBtn';
-        deviceJWTBtn.className = 'btn btn-secondary';
-        deviceJWTBtn.innerHTML = `
-            <span class="jwt-icon">🔑</span>
-            Device JWT
-        `;
-        deviceJWTBtn.addEventListener('click', () => this.generateDeviceJWT());
-        
-        // Add to header actions before logout button
-        const headerActions = document.querySelector('.header-actions');
-        const logoutBtn = document.getElementById('logoutBtn');
-        headerActions.insertBefore(deviceJWTBtn, logoutBtn);
-    }
-
-    removeDeviceJWTButton() {
-        const deviceJWTBtn = document.getElementById('deviceJWTBtn');
-        if (deviceJWTBtn) {
-            deviceJWTBtn.remove();
-        }
     }
 
     showSignUpForm() {
@@ -1073,75 +1043,112 @@ class HomeAutomationApp {
 
     // =================== DEVICE MANAGEMENT METHODS ===================
 
-    openAddDeviceModal() {
-        document.getElementById('addDeviceModal').classList.add('active');
-        // Clear form fields
-        document.getElementById('newDeviceName').value = '';
-        document.getElementById('newDeviceGpio').value = '';
-        document.getElementById('newDeviceType').value = 'light';
+    async openClaimDeviceModal() {
+        document.getElementById('claimDeviceModal').classList.add('active');
+        // Start searching for unclaimed devices
+        await this.findUnclaimedDevices();
     }
 
-    closeAddDeviceModal() {
-        document.getElementById('addDeviceModal').classList.remove('active');
+    closeClaimDeviceModal() {
+        document.getElementById('claimDeviceModal').classList.remove('active');
     }
 
-    async addDevice() {
-        const name = document.getElementById('newDeviceName').value.trim();
-        const gpio = parseInt(document.getElementById('newDeviceGpio').value);
-        const type = document.getElementById('newDeviceType').value;
+    async findUnclaimedDevices() {
+        const spinner = document.getElementById('claim-spinner');
+        const devicesList = document.getElementById('unclaimed-devices-list');
+        
+        // Show spinner and clear previous results
+        spinner.style.display = 'block';
+        devicesList.innerHTML = '';
 
-        // Validation
-        if (!name) {
-            this.showToast('Please enter a device name', 'error');
-            return;
+        try {
+            const { data, error } = await this.supabase
+                .from('devices')
+                .select('*')
+                .is('user_id', null);
+
+            if (error) {
+                throw error;
+            }
+
+            // Hide spinner
+            spinner.style.display = 'none';
+
+            if (data && data.length > 0) {
+                this.renderUnclaimedDevicesList(data);
+            } else {
+                devicesList.innerHTML = '<div class="no-devices-message">No new devices found. Make sure your device is powered on and connected to Wi-Fi.</div>';
+            }
+
+        } catch (error) {
+            console.error('Error fetching unclaimed devices:', error);
+            spinner.style.display = 'none';
+            devicesList.innerHTML = '<div class="no-devices-message">Error searching for devices. Please try again.</div>';
+            this.showToast('Failed to search for devices', 'error');
         }
+    }
 
-        if (!gpio || gpio < 1 || gpio > 39) {
-            this.showToast('Please enter a valid GPIO pin (1-39)', 'error');
-            return;
-        }
+    renderUnclaimedDevicesList(devices) {
+        const devicesList = document.getElementById('unclaimed-devices-list');
+        
+        const devicesHTML = devices.map(device => `
+            <div class="unclaimed-device-item">
+                <span class="unclaimed-device-name">${device.name}</span>
+                <button class="claim-btn" data-device-id="${device.id}">
+                    <span>🏠</span>
+                    Claim
+                </button>
+            </div>
+        `).join('');
+        
+        devicesList.innerHTML = devicesHTML;
+        
+        // Add event listeners to claim buttons
+        devicesList.querySelectorAll('.claim-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const deviceId = parseInt(e.target.dataset.deviceId || e.target.closest('.claim-btn').dataset.deviceId);
+                this.claimDevice(deviceId);
+            });
+        });
+    }
 
-        // Check if GPIO is already in use
-        const existingDevice = this.devices.find(d => d.gpio === gpio);
-        if (existingDevice) {
-            this.showToast(`GPIO ${gpio} is already in use by "${existingDevice.name}"`, 'error');
-            return;
-        }
-
-        // Ensure user is authenticated
+    async claimDevice(deviceId) {
         if (!this.currentUser) {
-            this.showToast('You must be logged in to add devices', 'error');
+            this.showToast('You must be logged in to claim devices', 'error');
             return;
         }
 
         try {
             const { data, error } = await this.supabase
                 .from('devices')
-                .insert([
-                    {
-                        name: name,
-                        gpio: gpio,
-                        state: 0, // Default to OFF
-                        device_type: type,
-                        user_id: this.currentUser.id // Include authenticated user_id
-                        //created_at: new Date().toISOString(),
-                        //updated_at: new Date().toISOString()
-                    }
-                ])
+                .update({ 
+                    user_id: this.currentUser.id,
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', deviceId)
                 .select();
 
             if (error) {
-                console.error('Error adding device:', error);
-                this.showToast('Failed to add device. Please try again.', 'error');
-                return;
+                throw error;
             }
 
-            this.closeAddDeviceModal();
-            this.showToast(`Device "${name}" added successfully!`, 'success');
+            if (data && data.length > 0) {
+                const claimedDevice = data[0];
+                
+                // Add to local devices array
+                this.devices.push(claimedDevice);
+                
+                // Refresh the device grid
+                this.renderDevices();
+                
+                // Close the modal and show success message
+                this.closeClaimDeviceModal();
+                this.showToast(`Device "${claimedDevice.name}" claimed successfully!`, 'success');
+            }
 
         } catch (error) {
-            console.error('Error adding device:', error);
-            this.showToast('Failed to add device. Please check your connection.', 'error');
+            console.error('Error claiming device:', error);
+            this.showToast('Failed to claim device. Please try again.', 'error');
         }
     }
 
@@ -1358,136 +1365,6 @@ class HomeAutomationApp {
         }
     }
 
-    // =================== DEVICE JWT GENERATION ===================
-
-    async generateDeviceJWT() {
-        if (!this.currentUser) {
-            this.showToast('You must be logged in to generate a device JWT', 'error');
-            return null;
-        }
-
-        try {
-            // Get the current session to use the access token
-            const { data: { session } } = await this.supabase.auth.getSession();
-            
-            if (!session) {
-                this.showToast('No active session found. Please log in again.', 'error');
-                return null;
-            }
-
-            // Call the Supabase Edge Function to create device JWT
-            const response = await fetch(`${SUPABASE_URL}/functions/v1/create-device-jwt`, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${session.access_token}`,
-                    'Content-Type': 'application/json',
-                    'apikey': SUPABASE_ANON_KEY
-                }
-            });
-
-            const result = await response.json();
-
-            if (!response.ok) {
-                throw new Error(result.error || 'Failed to generate device JWT');
-            }
-
-            console.log('Device JWT generated successfully');
-            
-            // Create a modal to display the JWT
-            this.showDeviceJWTModal(result.deviceJwt, result.expires_at);
-            
-            return result.deviceJwt;
-
-        } catch (error) {
-            console.error('Error generating device JWT:', error);
-            this.showToast(`Failed to generate device JWT: ${error.message}`, 'error');
-            return null;
-        }
-    }
-
-    showDeviceJWTModal(jwt, expiresAt) {
-        // Create JWT display modal if it doesn't exist
-        if (!document.getElementById('deviceJWTModal')) {
-            this.createDeviceJWTModal();
-        }
-
-        // Populate the modal with JWT information
-        document.getElementById('deviceJWTToken').value = jwt;
-        document.getElementById('deviceJWTExpiry').textContent = new Date(expiresAt).toLocaleString();
-        document.getElementById('deviceJWTModal').classList.add('active');
-    }
-
-    createDeviceJWTModal() {
-        const modalHTML = `
-            <div class="modal-overlay" id="deviceJWTModal">
-                <div class="modal" style="max-width: 600px;">
-                    <div class="modal-header">
-                        <h2>Device JWT Token</h2>
-                        <button class="modal-close" id="closeDeviceJWT">&times;</button>
-                    </div>
-                    <div class="modal-body">
-                        <div class="jwt-info">
-                            <p><strong>Instructions:</strong></p>
-                            <ol>
-                                <li>Copy the JWT token below</li>
-                                <li>Open your ESP32 Arduino code (HomeAutomationESP32.ino)</li>
-                                <li>Replace <code>PASTE_YOUR_JWT_HERE</code> with this token</li>
-                                <li>Upload the code to your ESP32</li>
-                            </ol>
-                            
-                            <div class="form-group">
-                                <label for="deviceJWTToken">JWT Token (Valid for 5 years):</label>
-                                <textarea id="deviceJWTToken" readonly rows="6" style="font-family: monospace; font-size: 12px; word-break: break-all;"></textarea>
-                                <button class="btn btn-secondary" id="copyJWTBtn" style="margin-top: 8px;">📋 Copy to Clipboard</button>
-                            </div>
-                            
-                            <div class="jwt-expiry">
-                                <strong>Expires:</strong> <span id="deviceJWTExpiry"></span>
-                            </div>
-                            
-                            <div class="jwt-warning" style="margin-top: 16px; padding: 12px; background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 4px;">
-                                <strong>⚠️ Important:</strong> Keep this JWT secure. It allows your ESP32 to access your devices for 5 years. Do not share it publicly.
-                            </div>
-                        </div>
-                    </div>
-                    <div class="modal-footer">
-                        <button class="btn btn-primary" id="closeDeviceJWTBtn">Done</button>
-                    </div>
-                </div>
-            </div>
-        `;
-
-        document.body.insertAdjacentHTML('beforeend', modalHTML);
-
-        // Add event listeners
-        document.getElementById('closeDeviceJWT').addEventListener('click', () => this.closeDeviceJWTModal());
-        document.getElementById('closeDeviceJWTBtn').addEventListener('click', () => this.closeDeviceJWTModal());
-        document.getElementById('copyJWTBtn').addEventListener('click', () => this.copyJWTToClipboard());
-        document.getElementById('deviceJWTModal').addEventListener('click', (e) => {
-            if (e.target.classList.contains('modal-overlay')) this.closeDeviceJWTModal();
-        });
-    }
-
-    closeDeviceJWTModal() {
-        const modal = document.getElementById('deviceJWTModal');
-        if (modal) {
-            modal.classList.remove('active');
-        }
-    }
-
-    async copyJWTToClipboard() {
-        const jwtTextarea = document.getElementById('deviceJWTToken');
-        try {
-            await navigator.clipboard.writeText(jwtTextarea.value);
-            this.showToast('JWT copied to clipboard!', 'success');
-        } catch (error) {
-            // Fallback for older browsers
-            jwtTextarea.select();
-            document.execCommand('copy');
-            this.showToast('JWT copied to clipboard!', 'success');
-        }
-    }
-
     // =================== PWA INSTALLATION METHODS ===================
 
     setupPWAInstallation() {
@@ -1576,9 +1453,9 @@ class HomeAutomationApp {
                 }, 1000);
                 break;
             case 'add':
-                // Open add device modal if accessed via shortcut
+                // Open claim device modal if accessed via shortcut
                 setTimeout(() => {
-                    this.openAddDeviceModal();
+                    this.openClaimDeviceModal();
                 }, 500);
                 break;
         }
@@ -1623,8 +1500,6 @@ class HomeAutomationApp {
                 // Retry the action based on its type
                 if (action.type === 'toggleDevice') {
                     await this.toggleDevice(action.deviceId);
-                } else if (action.type === 'addDevice') {
-                    // Handle add device retry
                 } else if (action.type === 'deleteDevice') {
                     // Handle delete device retry
                 }

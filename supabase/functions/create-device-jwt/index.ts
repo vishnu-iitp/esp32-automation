@@ -1,7 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { create } from "https://deno.land/x/djwt@v2.8/mod.ts"
-// Import the crypto library to manually create the key
 import { crypto } from "https://deno.land/std@0.168.0/crypto/mod.ts";
 
 const corsHeaders = {
@@ -10,15 +9,14 @@ const corsHeaders = {
 }
 
 serve(async (req) => {
-  // This part remains the same
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
 
   try {
-    const supabaseUrl = Deno.env.get('SPABASE_URL')
-    const supabaseServiceKey = Deno.env.get('SPABASE_SERVICE_ROLE_KEY')
-    const jwtSecret = Deno.env.get('SPABASE_JWT_SECRET')
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+    const jwtSecret = Deno.env.get('SUPABASE_JWT_SECRET')
 
     if (!supabaseUrl || !supabaseServiceKey || !jwtSecret) {
       console.error('FATAL: Missing one or more required environment variables.');
@@ -54,7 +52,7 @@ serve(async (req) => {
 
     const payload = {
       sub: user.id,
-      role: 'device_user',
+      role: 'device_user', // This role will be used for RLS policies
       user_id: user.id,
       iss: 'esp32-device-auth',
       aud: 'esp32-devices',
@@ -62,8 +60,6 @@ serve(async (req) => {
       iat: now
     };
 
-    // --- FIX APPLIED HERE ---
-    // Manually create a CryptoKey from the raw secret.
     const key = await crypto.subtle.importKey(
       "raw",
       new TextEncoder().encode(jwtSecret),
@@ -72,12 +68,10 @@ serve(async (req) => {
       ["sign", "verify"],
     );
 
-    // Pass the newly created CryptoKey to the 'create' function.
     const deviceJwt = await create({ alg: "HS256", typ: "JWT" }, payload, key);
-    // --- END OF FIX ---
 
     return new Response(
-      JSON.stringify({ 
+      JSON.stringify({
         deviceJwt: deviceJwt,
         user_id: user.id,
         expires_at: new Date((now + fiveYears) * 1000).toISOString(),
@@ -93,7 +87,7 @@ serve(async (req) => {
     console.error("--- FULL ERROR OBJECT ---");
     console.error(error);
     console.error("--- END FULL ERROR OBJECT ---");
-    
+
     const errorMessage = error instanceof Error ? error.message : String(error);
 
     return new Response(

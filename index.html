@@ -79,7 +79,7 @@
         <div class="add-device-section">
             <button class="btn btn-primary add-device-btn" id="addDeviceBtn">
                 <span class="add-icon">➕</span>
-                Add Device
+                Claim New Device
             </button>
         </div>
     </div>
@@ -139,37 +139,20 @@
         </div>
     </div>
 
-    <!-- Add Device Modal -->
-    <div class="modal-overlay" id="addDeviceModal">
+    <!-- Claim Device Modal -->
+    <div class="modal-overlay" id="claimDeviceModal">
         <div class="modal">
             <div class="modal-header">
-                <h2>Add New Device</h2>
-                <button class="modal-close" id="closeAddDevice">&times;</button>
+                <h2>Claim New Device</h2>
+                <button class="modal-close" id="closeClaimDevice">&times;</button>
             </div>
             <div class="modal-body">
-                <div class="form-group">
-                    <label for="newDeviceName">Device Name</label>
-                    <input type="text" id="newDeviceName" placeholder="Kitchen Light">
-                </div>
-                <div class="form-group">
-                    <label for="newDeviceGpio">GPIO Pin</label>
-                    <input type="number" id="newDeviceGpio" placeholder="23" min="1" max="39">
-                </div>
-                <div class="form-group">
-                    <label for="newDeviceType">Device Type</label>
-                    <select id="newDeviceType">
-                        <option value="light">💡 Light</option>
-                        <option value="fan">🌀 Fan</option>
-                        <option value="outlet">🔌 Outlet</option>
-                        <option value="motor">⚙️ Motor</option>
-                        <option value="heater">🔥 Heater</option>
-                        <option value="cooler">❄️ Cooler</option>
-                    </select>
-                </div>
+                <p>Searching for new devices on your network that are ready to be claimed. Please make sure your new device is powered on and connected to your Wi-Fi.</p>
+                <div id="claim-spinner" class="spinner"></div>
+                <div id="unclaimed-devices-list"></div>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-secondary" id="cancelAddDevice">Cancel</button>
-                <button class="btn btn-primary" id="saveAddDevice">Add Device</button>
+                <button class="btn btn-secondary" id="cancelClaimDevice">Close</button>
             </div>
         </div>
     </div>

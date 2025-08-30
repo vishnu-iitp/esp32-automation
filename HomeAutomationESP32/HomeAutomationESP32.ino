@@ -102,25 +102,33 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
 }
 
 void subscribeToDevicesTable() {
+    //
+    // --- FIX APPLIED HERE ---
+    // You MUST add a "filter" to your Realtime subscription that matches your RLS policy.
+    // Replace this with the actual user_id from your Supabase auth.users table.
+    const char* userId = "658692d2-26ae-4272-9f82-9b76f8ec6026";
+    //
+    // --- END OF FIX ---
+
     DynamicJsonDocument doc(1024);
     doc["topic"] = "realtime:public:devices";
     doc["event"] = "phx_join";
-    
-    // Subscribe to both UPDATE and INSERT events
-    doc["payload"]["config"]["postgres_changes"][0]["event"] = "UPDATE";
+
+    // Create a filter string: "user_id=eq.YOUR_USER_ID"
+    String filter = "user_id=eq." + String(userId);
+
+    // Subscribe to INSERT, UPDATE, and DELETE events with the required filter
+    doc["payload"]["config"]["postgres_changes"][0]["event"] = "*"; // Listen for all changes
     doc["payload"]["config"]["postgres_changes"][0]["schema"] = "public";
     doc["payload"]["config"]["postgres_changes"][0]["table"] = "devices";
-    
-    doc["payload"]["config"]["postgres_changes"][1]["event"] = "INSERT";
-    doc["payload"]["config"]["postgres_changes"][1]["schema"] = "public";
-    doc["payload"]["config"]["postgres_changes"][1]["table"] = "devices";
-    
+    doc["payload"]["config"]["postgres_changes"][0]["filter"] = filter.c_str(); // Apply the RLS filter
+
     doc["ref"] = messageRef++;
-    
+
     String message;
     serializeJson(doc, message);
     webSocket.sendTXT(message);
-    Serial.println("Subscribing to devices table updates and inserts...");
+    Serial.println("Subscribing to devices table with RLS filter for user: " + String(userId));
 }
 
 void handleWebSocketMessage(uint8_t * payload, size_t length) {
