@@ -1,4 +1,4 @@
-const CACHE_NAME = 'smart-home-v1.0.0';
+const CACHE_NAME = 'smart-home-v1.0.1'; // Updated version to force cache refresh
 const urlsToCache = [
   '/',
   '/index.html',
@@ -12,6 +12,9 @@ const urlsToCache = [
 
 // Install service worker and cache resources
 self.addEventListener('install', (event) => {
+  // Force immediate activation of new service worker
+  self.skipWaiting();
+  
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then((cache) => {
@@ -24,43 +27,69 @@ self.addEventListener('install', (event) => {
   );
 });
 
-// Fetch event - serve from cache when possible
+// Fetch event - use network-first strategy for critical files
 self.addEventListener('fetch', (event) => {
-  event.respondWith(
-    caches.match(event.request)
-      .then((response) => {
-        // Return cached version or fetch from network
-        if (response) {
+  // Critical files that should always be fresh
+  const criticalFiles = ['/js/app.js', '/css/styles.css', '/index.html'];
+  const isCriticalFile = criticalFiles.some(file => event.request.url.includes(file));
+  
+  if (isCriticalFile) {
+    // Network-first strategy for critical files
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          // Cache the fresh response
+          if (response && response.status === 200) {
+            const responseToCache = response.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(event.request, responseToCache);
+            });
+          }
           return response;
-        }
-        
-        // Clone the request because it can only be used once
-        const fetchRequest = event.request.clone();
-        
-        return fetch(fetchRequest).then((response) => {
-          // Check if we received a valid response
-          if (!response || response.status !== 200 || response.type !== 'basic') {
+        })
+        .catch(() => {
+          // Fall back to cache if network fails
+          return caches.match(event.request);
+        })
+    );
+  } else {
+    // Cache-first strategy for other files
+    event.respondWith(
+      caches.match(event.request)
+        .then((response) => {
+          // Return cached version or fetch from network
+          if (response) {
             return response;
           }
           
-          // Clone the response because it can only be used once
-          const responseToCache = response.clone();
+          // Clone the request because it can only be used once
+          const fetchRequest = event.request.clone();
           
-          caches.open(CACHE_NAME)
-            .then((cache) => {
-              cache.put(event.request, responseToCache);
-            });
-          
-          return response;
-        });
-      })
-      .catch(() => {
-        // Return offline page or fallback
-        if (event.request.destination === 'document') {
-          return caches.match('/index.html');
-        }
-      })
-  );
+          return fetch(fetchRequest).then((response) => {
+            // Check if we received a valid response
+            if (!response || response.status !== 200 || response.type !== 'basic') {
+              return response;
+            }
+            
+            // Clone the response because it can only be used once
+            const responseToCache = response.clone();
+            
+            caches.open(CACHE_NAME)
+              .then((cache) => {
+                cache.put(event.request, responseToCache);
+              });
+            
+            return response;
+          });
+        })
+        .catch(() => {
+          // Return offline page or fallback
+          if (event.request.destination === 'document') {
+            return caches.match('/index.html');
+          }
+        })
+    );
+  }
 });
 
 // Activate service worker and clean up old caches

@@ -1,158 +1,124 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
-
-serve(async (req) => {
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type'
+};
+serve(async (req)=>{
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+    return new Response('ok', {
+      headers: corsHeaders
+    });
   }
-
   try {
-    // Create Supabase client
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    )
-
-    // Get the authorization header and extract the JWT
-    const authHeader = req.headers.get('Authorization')!
-    const token = authHeader.replace('Bearer ', '')
-
-    // Get the user from the JWT
-    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token)
-    
-    if (authError || !user) {
-      return new Response(
-        JSON.stringify({ error: 'Unauthorized' }),
-        { 
-          status: 401, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+    // Create a Supabase client with the user's auth token
+    const supabaseClient = createClient(Deno.env.get('SUPABASE_URL') ?? '', Deno.env.get('SUPABASE_ANON_KEY') ?? '', {
+      global: {
+        headers: {
+          Authorization: req.headers.get('Authorization')
         }
-      )
+      }
+    });
+    // 1. Get the user from the auth token
+    const { data: { user } } = await supabaseClient.auth.getUser();
+    if (!user) {
+      return new Response(JSON.stringify({
+        error: 'Unauthorized user'
+      }), {
+        status: 401,
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'application/json'
+        }
+      });
     }
-
-    // Parse request body
-    const { mac_address } = await req.json()
-    
+    // 2. Parse the MAC address from the request body
+    const { mac_address } = await req.json();
     if (!mac_address) {
-      return new Response(
-        JSON.stringify({ error: 'MAC address is required' }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      return new Response(JSON.stringify({
+        error: 'MAC address is required'
+      }), {
+        status: 400,
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'application/json'
         }
-      )
+      });
     }
-
-    // Validate MAC address format
-    const macRegex = /^([0-9A-F]{2}[:-]){5}([0-9A-F]{2})$/i
-    if (!macRegex.test(mac_address)) {
-      return new Response(
-        JSON.stringify({ error: 'Invalid MAC address format' }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+    const normalizedMac = mac_address.trim().toUpperCase();
+    // 3. Find the device in the 'devices' table
+    const { data: device, error: findError } = await supabaseClient.from('devices').select('id, user_id').eq('mac_address', normalizedMac).single();
+    if (findError || !device) {
+      return new Response(JSON.stringify({
+        error: 'Device not found. Make sure the ESP32 is online and has registered itself.'
+      }), {
+        status: 404,
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'application/json'
         }
-      )
+      });
     }
-
-    // Start a transaction-like operation
-    // First, check if device exists in unclaimed_devices table
-    const { data: unclaimedDevice, error: unclaimedError } = await supabaseClient
-      .from('unclaimed_devices')
-      .select('*')
-      .eq('mac_address', mac_address.toUpperCase())
-      .single()
-
-    if (unclaimedError) {
-      console.error('Error checking unclaimed devices:', unclaimedError)
-      return new Response(
-        JSON.stringify({ error: 'Device not found or already claimed' }),
-        { 
-          status: 404, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+    // 4. Check if the device is already claimed by another user
+    if (device.user_id && device.user_id !== user.id) {
+      return new Response(JSON.stringify({
+        error: 'This device has already been claimed by another user.'
+      }), {
+        status: 409,
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'application/json'
         }
-      )
+      });
     }
-
-    // Find the device in the devices table with null user_id and matching MAC address
-    const { data: device, error: deviceError } = await supabaseClient
-      .from('devices')
-      .select('*')
-      .eq('mac_address', mac_address.toUpperCase())
-      .is('user_id', null)
-      .single()
-
-    if (deviceError) {
-      console.error('Error finding device:', deviceError)
-      return new Response(
-        JSON.stringify({ error: 'Device not found in devices table' }),
-        { 
-          status: 404, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      )
-    }
-
-    // Update the device to assign it to the user
-    const { error: updateError } = await supabaseClient
-      .from('devices')
-      .update({ 
-        user_id: user.id,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', device.id)
-
+    // 5. Update the device with the current user's ID
+    const { error: updateError } = await supabaseClient.from('devices').update({
+      user_id: user.id,
+      updated_at: new Date().toISOString()
+    }).eq('mac_address', normalizedMac);
     if (updateError) {
-      console.error('Error updating device:', updateError)
-      return new Response(
-        JSON.stringify({ error: 'Failed to claim device' }),
-        { 
-          status: 500, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      console.error('Error updating device:', updateError);
+      return new Response(JSON.stringify({
+        error: 'Failed to claim device in database.'
+      }), {
+        status: 500,
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'application/json'
         }
-      )
+      });
     }
-
-    // Remove the device from unclaimed_devices table
-    const { error: deleteError } = await supabaseClient
+    // 6. Clean up the unclaimed_devices table
+    const { error: cleanupError } = await supabaseClient
       .from('unclaimed_devices')
       .delete()
-      .eq('mac_address', mac_address.toUpperCase())
+      .eq('mac_address', normalizedMac);
 
-    if (deleteError) {
-      console.error('Error removing from unclaimed devices:', deleteError)
-      // Don't return error here as the main operation succeeded
+    if (cleanupError) {
+      console.warn('Warning: Failed to cleanup unclaimed_devices table:', cleanupError);
+      // Don't fail the entire operation for cleanup issues
     }
 
-    return new Response(
-      JSON.stringify({ 
-        success: true, 
-        message: 'Device claimed successfully',
-        device: {
-          id: device.id,
-          name: device.name,
-          mac_address: device.mac_address
-        }
-      }),
-      { 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+    return new Response(JSON.stringify({
+      success: true,
+      message: 'Device claimed successfully!'
+    }), {
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'application/json'
       }
-    )
-
+    });
   } catch (error) {
-    console.error('Unexpected error:', error)
-    return new Response(
-      JSON.stringify({ error: 'Internal server error' }),
-      { 
-        status: 500, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+    console.error('Unexpected error:', error);
+    return new Response(JSON.stringify({
+      error: 'Internal server error'
+    }), {
+      status: 500,
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'application/json'
       }
-    )
+    });
   }
-})
+});

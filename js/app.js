@@ -6,6 +6,7 @@ class HomeAutomationApp {
         this.isListening = false;
         this.recognition = null;
         this.isProcessingVoiceCommand = false;
+        this.realtimeChannel = null; // Track the realtime channel for cleanup
         
         this.init();
     }
@@ -84,6 +85,16 @@ class HomeAutomationApp {
         });
         document.getElementById('deviceMacAddress').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') this.claimDevice();
+        });
+        
+        // Add event listener for new device MAC address field
+        document.addEventListener('DOMContentLoaded', () => {
+            const newDeviceMacField = document.getElementById('newDeviceMacAddress');
+            if (newDeviceMacField) {
+                newDeviceMacField.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') this.addDevice();
+                });
+            }
         });
     }
 
@@ -170,6 +181,12 @@ class HomeAutomationApp {
         // Show auth, hide main app
         document.getElementById('authSection').style.display = 'block';
         document.getElementById('mainAppSection').style.display = 'none';
+        
+        // Clean up realtime subscription
+        if (this.realtimeChannel) {
+            this.realtimeChannel.unsubscribe();
+            this.realtimeChannel = null;
+        }
         
         // Clear devices
         this.devices = [];
@@ -273,25 +290,40 @@ class HomeAutomationApp {
     async fetchUserDevices() {
         if (!this.supabase || !this.user) return;
         
-        const { data, error } = await this.supabase
-            .from('devices')
-            .select('*')
-            .eq('user_id', this.user.id);
-        
-        if (error) {
-            console.error('Error fetching devices:', error);
-            this.showToast('Could not fetch devices', 'error');
-            return;
+        try {
+            const { data, error } = await this.supabase
+                .from('devices')
+                .select('*')
+                .eq('user_id', this.user.id)
+                .order('created_at', { ascending: true });
+            
+            if (error) {
+                console.error('Error fetching devices:', error);
+                this.showToast('Could not fetch devices', 'error');
+                return;
+            }
+            
+            this.devices = data || [];
+            this.renderDevices();
+            
+            if (this.devices.length === 0) {
+                this.showToast('No devices found. Add a device or claim an existing one.', 'info');
+            }
+        } catch (error) {
+            console.error('Unexpected error fetching devices:', error);
+            this.showToast('Failed to load devices. Please refresh the page.', 'error');
         }
-        
-        this.devices = data || [];
-        this.renderDevices();
     }
 
     setupRealtimeSubscriptions() {
         if (!this.supabase || !this.user) return;
         
-        this.supabase
+        // Clean up existing subscription if any
+        if (this.realtimeChannel) {
+            this.realtimeChannel.unsubscribe();
+        }
+        
+        this.realtimeChannel = this.supabase
             .channel('user-devices')
             .on('postgres_changes', { 
                 event: 'UPDATE', 
@@ -311,7 +343,23 @@ class HomeAutomationApp {
                 console.log('New device added:', payload.new);
                 this.handleDeviceInsert(payload.new);
             })
-            .subscribe();
+            .on('postgres_changes', { 
+                event: 'DELETE', 
+                schema: 'public', 
+                table: 'devices',
+                filter: `user_id=eq.${this.user.id}`
+            }, payload => {
+                console.log('Device deleted:', payload.old);
+                this.handleDeviceDelete(payload.old);
+            })
+            .subscribe((status) => {
+                console.log('Realtime subscription status:', status);
+                if (status === 'SUBSCRIBED') {
+                    this.showToast('Real-time updates connected', 'success');
+                } else if (status === 'CHANNEL_ERROR') {
+                    this.showToast('Real-time connection failed', 'error');
+                }
+            });
     }
 
     // Device claiming functionality
@@ -391,23 +439,45 @@ class HomeAutomationApp {
         this.showToast(`New device "${newDevice.name}" added successfully!`, 'success');
     }
 
+    handleDeviceDelete(deletedDevice) {
+        // Remove device from local array
+        this.devices = this.devices.filter(d => d.id !== deletedDevice.id);
+        
+        // Remove device card from UI
+        const card = document.querySelector(`[data-device-id="${deletedDevice.id}"]`);
+        if (card) {
+            card.remove();
+        }
+        
+        this.showToast(`Device "${deletedDevice.name}" removed`, 'info');
+    }
+
     async toggleDevice(deviceId) {
         const device = this.devices.find(d => d.id === deviceId);
         if (!device) return;
 
         const newState = device.state ? 0 : 1;
         
-        const { error } = await this.supabase
-            .from('devices')
-            .update({ state: newState, updated_at: new Date() })
-            .eq('id', deviceId);
+        try {
+            const { error } = await this.supabase
+                .from('devices')
+                .update({ 
+                    state: newState, 
+                    updated_at: new Date().toISOString() 
+                })
+                .eq('id', deviceId);
 
-        if (error) {
-            this.showToast('Failed to update device', 'error');
-            return;
+            if (error) {
+                console.error('Error updating device:', error);
+                this.showToast('Failed to update device', 'error');
+                return;
+            }
+
+            this.showToast(`${device.name} turned ${newState ? 'ON' : 'OFF'}`, 'success');
+        } catch (error) {
+            console.error('Unexpected error updating device:', error);
+            this.showToast('Network error. Please check your connection.', 'error');
         }
-
-        this.showToast(`${device.name} turned ${newState ? 'ON' : 'OFF'}`, 'success');
     }
 
     async setDeviceState(deviceId, newState) {
@@ -574,33 +644,7 @@ class HomeAutomationApp {
         this.showToast('Voice command executed. Tap voice button to give another command.', 'info');
     }
 
-    handleDeviceUpdate(updatedDevice) {
-        const device = this.devices.find(d => d.id === updatedDevice.id);
-        if (device) {
-            // Update device properties
-            Object.assign(device, updatedDevice);
-            this.updateDeviceUI(device);
-            
-            // Stop voice listening if a voice command was being processed
-            if (this.isProcessingVoiceCommand && this.isListening) {
-                this.stopVoiceControlAfterCommand();
-            }
-        }
-    }
-
-    handleDeviceInsert(newDevice) {
-        // Add new device to local array
-        this.devices.push(newDevice);
-        
-        // Add device card to UI
-        const grid = document.getElementById('deviceGrid');
-        const deviceCard = this.createDeviceCard(newDevice);
-        grid.appendChild(deviceCard);
-        
-        this.showToast(`New device "${newDevice.name}" added successfully!`, 'success');
-    }
-
-    async toggleDevice(deviceId) {
+    async processVoiceCommand(command) {
         const device = this.devices.find(d => d.id === deviceId);
         if (!device) return;
 
@@ -1286,6 +1330,7 @@ class HomeAutomationApp {
         document.getElementById('addDeviceModal').classList.add('active');
         // Clear form fields
         document.getElementById('newDeviceName').value = '';
+        document.getElementById('newDeviceMacAddress').value = '';
         document.getElementById('newDeviceGpio').value = '';
         document.getElementById('newDeviceType').value = 'light';
     }
@@ -1296,12 +1341,25 @@ class HomeAutomationApp {
 
     async addDevice() {
         const name = document.getElementById('newDeviceName').value.trim();
+        const macAddress = document.getElementById('newDeviceMacAddress').value.trim().toUpperCase();
         const gpio = parseInt(document.getElementById('newDeviceGpio').value);
         const type = document.getElementById('newDeviceType').value;
 
         // Validation
         if (!name) {
             this.showToast('Please enter a device name', 'error');
+            return;
+        }
+
+        if (!macAddress) {
+            this.showToast('Please enter a MAC address', 'error');
+            return;
+        }
+
+        // Validate MAC address format
+        const macRegex = /^([0-9A-F]{2}[:-]){5}([0-9A-F]{2})$/;
+        if (!macRegex.test(macAddress)) {
+            this.showToast('Please enter a valid MAC address (AA:BB:CC:DD:EE:FF)', 'error');
             return;
         }
 
@@ -1317,16 +1375,29 @@ class HomeAutomationApp {
             return;
         }
 
+        // Check if MAC address is already in use
+        const existingMacDevice = this.devices.find(d => d.mac_address === macAddress);
+        if (existingMacDevice) {
+            this.showToast(`MAC address ${macAddress} is already in use by "${existingMacDevice.name}"`, 'error');
+            return;
+        }
+
         try {
+            document.getElementById('saveAddDevice').disabled = true;
+            document.getElementById('saveAddDevice').textContent = 'Adding Device...';
+
             const { data, error } = await this.supabase
                 .from('devices')
                 .insert([
                     {
                         name: name,
+                        mac_address: macAddress,
                         gpio: gpio,
                         state: 0, // Default to OFF
                         device_type: type,
-                        user_id: this.user.id // Associate with current user
+                        user_id: this.user.id, // Associate with current user
+                        created_at: new Date().toISOString(),
+                        updated_at: new Date().toISOString()
                     }
                 ])
                 .select();
@@ -1337,12 +1408,21 @@ class HomeAutomationApp {
                 return;
             }
 
+            // Clean up unclaimed_devices table if this MAC was there
+            await this.supabase
+                .from('unclaimed_devices')
+                .delete()
+                .eq('mac_address', macAddress);
+
             this.closeAddDeviceModal();
             this.showToast(`Device "${name}" added successfully!`, 'success');
 
         } catch (error) {
             console.error('Error adding device:', error);
             this.showToast('Failed to add device. Please check your connection.', 'error');
+        } finally {
+            document.getElementById('saveAddDevice').disabled = false;
+            document.getElementById('saveAddDevice').textContent = 'Add Device';
         }
     }
 
