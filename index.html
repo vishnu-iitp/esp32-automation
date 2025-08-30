@@ -12,25 +12,89 @@
 </head>
 <body>
     <div class="container">
-        <!-- Header -->
-        <header class="header">
-            <div class="header-content">
-                <h1 class="app-title">
+        <!-- Authentication Section (shown when not logged in) -->
+        <div id="authSection" class="auth-section">
+            <div class="auth-container">
+                <h1 class="auth-title">
                     <span class="title-icon">🏠</span>
-                    Smart Home
+                    Smart Home Control
                 </h1>
-                <div class="header-actions">
-                    <button class="btn btn-secondary" id="voiceBtn">
-                        <span class="voice-icon">🎤</span>
-                        Voice Control
-                    </button>
-                    <button class="btn btn-secondary" id="settingsBtn">
-                        <span class="settings-icon">⚙️</span>
-                        Settings
-                    </button>
+                <p class="auth-subtitle">Control your ESP32 devices from anywhere</p>
+                
+                <!-- Login Form -->
+                <div id="loginForm" class="auth-form">
+                    <h2>Sign In</h2>
+                    <div class="form-group">
+                        <label for="loginEmail">Email</label>
+                        <input type="email" id="loginEmail" placeholder="Enter your email" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="loginPassword">Password</label>
+                        <input type="password" id="loginPassword" placeholder="Enter your password" required>
+                    </div>
+                    <button class="btn btn-primary btn-full" id="signInBtn">Sign In</button>
+                    <p class="auth-switch">
+                        Don't have an account? 
+                        <a href="#" id="showSignUpForm">Sign up here</a>
+                    </p>
+                </div>
+
+                <!-- Sign Up Form -->
+                <div id="signupForm" class="auth-form" style="display: none;">
+                    <h2>Create Account</h2>
+                    <div class="form-group">
+                        <label for="signupEmail">Email</label>
+                        <input type="email" id="signupEmail" placeholder="Enter your email" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="signupPassword">Password</label>
+                        <input type="password" id="signupPassword" placeholder="Choose a password (min 6 characters)" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="signupUsername">Username</label>
+                        <input type="text" id="signupUsername" placeholder="Choose a username" required>
+                    </div>
+                    <button class="btn btn-primary btn-full" id="signUpBtn">Create Account</button>
+                    <p class="auth-switch">
+                        Already have an account? 
+                        <a href="#" id="showSignInForm">Sign in here</a>
+                    </p>
                 </div>
             </div>
-        </header>
+        </div>
+
+        <!-- Main App Section (shown when logged in) -->
+        <div id="mainAppSection" class="main-app" style="display: none;">
+            <!-- Header -->
+            <header class="header">
+                <div class="header-content">
+                    <h1 class="app-title">
+                        <span class="title-icon">🏠</span>
+                        Smart Home
+                    </h1>
+                    <div class="user-info">
+                        <span id="userEmail" class="user-email"></span>
+                    </div>
+                    <div class="header-actions">
+                        <button class="btn btn-secondary" id="voiceBtn">
+                            <span class="voice-icon">🎤</span>
+                            Voice Control
+                        </button>
+                        <button class="btn btn-secondary" id="claimDeviceBtn">
+                            <span class="claim-icon">📱</span>
+                            Claim Device
+                        </button>
+                        <button class="btn btn-secondary" id="settingsBtn">
+                            <span class="settings-icon">⚙️</span>
+                            Settings
+                        </button>
+                        <button class="btn btn-danger" id="logoutBtn">
+                            <span class="logout-icon">🚪</span>
+                            Logout
+                        </button>
+                    </div>
+                </div>
+            </header>
 
         <!-- Connection Status -->
         <div class="status-banner" id="statusBanner">
@@ -64,6 +128,7 @@
                 Add Device
             </button>
         </div>
+        </div> <!-- End of mainAppSection -->
     </div>
 
     <!-- Settings Modal -->
@@ -149,6 +214,27 @@
             <div class="modal-footer">
                 <button class="btn btn-secondary" id="cancelAddDevice">Cancel</button>
                 <button class="btn btn-primary" id="saveAddDevice">Add Device</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Claim Device Modal -->
+    <div class="modal-overlay" id="claimDeviceModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>Claim New Device</h2>
+                <button class="modal-close" id="closeClaimDevice">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="deviceMacAddress">ESP32 MAC Address</label>
+                    <input type="text" id="deviceMacAddress" placeholder="AA:BB:CC:DD:EE:FF" pattern="^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$">
+                    <small>Enter the MAC address of your ESP32 device (found in device startup logs)</small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="cancelClaimDevice">Cancel</button>
+                <button class="btn btn-primary" id="saveClaimDevice">Claim Device</button>
             </div>
         </div>
     </div>

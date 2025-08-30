@@ -2,6 +2,7 @@ class HomeAutomationApp {
     constructor() {
         this.supabase = null;
         this.devices = [];
+        this.user = null;
         this.isListening = false;
         this.recognition = null;
         this.isProcessingVoiceCommand = false;
@@ -13,17 +14,37 @@ class HomeAutomationApp {
         this.setupEventListeners();
         this.loadSupabaseConfig();
         await this.initializeSupabase();
-        await this.fetchInitialDevices();
-        this.setupRealtimeSubscriptions();
+        await this.checkAuthState();
         this.setupVoiceControl();
     }
 
     setupEventListeners() {
+        // Authentication event listeners
+        document.getElementById('showSignUpForm').addEventListener('click', (e) => {
+            e.preventDefault();
+            this.showSignUpForm();
+        });
+        document.getElementById('showSignInForm').addEventListener('click', (e) => {
+            e.preventDefault();
+            this.showSignInForm();
+        });
+        document.getElementById('signInBtn').addEventListener('click', () => this.signIn());
+        document.getElementById('signUpBtn').addEventListener('click', () => this.signUp());
+        document.getElementById('logoutBtn').addEventListener('click', () => this.signOut());
+
+        // Claim Device event listeners
+        document.getElementById('claimDeviceBtn').addEventListener('click', () => this.openClaimDeviceModal());
+        document.getElementById('closeClaimDevice').addEventListener('click', () => this.closeClaimDeviceModal());
+        document.getElementById('cancelClaimDevice').addEventListener('click', () => this.closeClaimDeviceModal());
+        document.getElementById('saveClaimDevice').addEventListener('click', () => this.claimDevice());
+
+        // Settings event listeners
         document.getElementById('settingsBtn').addEventListener('click', () => this.openSettings());
         document.getElementById('closeSettings').addEventListener('click', () => this.closeSettings());
         document.getElementById('cancelSettings').addEventListener('click', () => this.closeSettings());
         document.getElementById('saveSettings').addEventListener('click', () => this.saveSettings());
 
+        // Voice control event listeners
         document.getElementById('voiceBtn').addEventListener('click', () => this.toggleVoiceControl());
         document.getElementById('stopVoiceBtn').addEventListener('click', () => this.stopVoiceControl());
 
@@ -41,6 +62,7 @@ class HomeAutomationApp {
             }
         });
 
+        // Modal overlay listeners
         document.getElementById('settingsModal').addEventListener('click', (e) => {
             if (e.target.classList.contains('modal-overlay')) this.closeSettings();
         });
@@ -48,6 +70,31 @@ class HomeAutomationApp {
         document.getElementById('addDeviceModal').addEventListener('click', (e) => {
             if (e.target.classList.contains('modal-overlay')) this.closeAddDeviceModal();
         });
+
+        document.getElementById('claimDeviceModal').addEventListener('click', (e) => {
+            if (e.target.classList.contains('modal-overlay')) this.closeClaimDeviceModal();
+        });
+
+        // Enter key listeners for forms
+        document.getElementById('loginPassword').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') this.signIn();
+        });
+        document.getElementById('signupUsername').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') this.signUp();
+        });
+        document.getElementById('deviceMacAddress').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') this.claimDevice();
+        });
+    }
+
+    showSignUpForm() {
+        document.getElementById('loginForm').style.display = 'none';
+        document.getElementById('signupForm').style.display = 'block';
+    }
+
+    showSignInForm() {
+        document.getElementById('signupForm').style.display = 'none';
+        document.getElementById('loginForm').style.display = 'block';
     }
 
     loadSupabaseConfig() {
@@ -65,7 +112,7 @@ class HomeAutomationApp {
         const supabaseKey = localStorage.getItem('supabaseKey');
 
         if (!supabaseUrl || !supabaseKey) {
-            this.updateConnectionStatus('disconnected', 'Please configure Supabase settings');
+            this.updateConnectionStatus('disconnected', 'Please configure Supabase settings first');
             return;
         }
 
@@ -80,31 +127,451 @@ class HomeAutomationApp {
         }
     }
 
-    async fetchInitialDevices() {
+    async checkAuthState() {
         if (!this.supabase) return;
-        const { data, error } = await this.supabase.from('devices').select('*');
+
+        const { data: { session } } = await this.supabase.auth.getSession();
+        
+        if (session?.user) {
+            this.user = session.user;
+            await this.onUserSignedIn();
+        } else {
+            this.onUserSignedOut();
+        }
+
+        // Listen for auth changes
+        this.supabase.auth.onAuthStateChange(async (event, session) => {
+            if (session?.user) {
+                this.user = session.user;
+                await this.onUserSignedIn();
+            } else {
+                this.user = null;
+                this.onUserSignedOut();
+            }
+        });
+    }
+
+    async onUserSignedIn() {
+        // Show main app, hide auth
+        document.getElementById('authSection').style.display = 'none';
+        document.getElementById('mainAppSection').style.display = 'block';
+        
+        // Update user info
+        document.getElementById('userEmail').textContent = this.user.email;
+        
+        // Fetch user's devices and setup real-time subscriptions
+        await this.fetchUserDevices();
+        this.setupRealtimeSubscriptions();
+        
+        this.showToast(`Welcome back, ${this.user.email}!`, 'success');
+    }
+
+    onUserSignedOut() {
+        // Show auth, hide main app
+        document.getElementById('authSection').style.display = 'block';
+        document.getElementById('mainAppSection').style.display = 'none';
+        
+        // Clear devices
+        this.devices = [];
+        this.renderDevices();
+        
+        // Clear form fields
+        this.clearAuthForms();
+    }
+
+    clearAuthForms() {
+        document.getElementById('loginEmail').value = '';
+        document.getElementById('loginPassword').value = '';
+        document.getElementById('signupEmail').value = '';
+        document.getElementById('signupPassword').value = '';
+        document.getElementById('signupUsername').value = '';
+    }
+
+    async signUp() {
+        const email = document.getElementById('signupEmail').value.trim();
+        const password = document.getElementById('signupPassword').value;
+        const username = document.getElementById('signupUsername').value.trim();
+
+        if (!email || !password || !username) {
+            this.showToast('Please fill in all fields', 'error');
+            return;
+        }
+
+        if (password.length < 6) {
+            this.showToast('Password must be at least 6 characters', 'error');
+            return;
+        }
+
+        try {
+            document.getElementById('signUpBtn').disabled = true;
+            document.getElementById('signUpBtn').textContent = 'Creating Account...';
+
+            const { data, error } = await this.supabase.auth.signUp({
+                email: email,
+                password: password,
+                options: {
+                    data: {
+                        username: username
+                    }
+                }
+            });
+
+            if (error) throw error;
+
+            this.showToast('Account created! Please check your email to verify your account.', 'success');
+            this.showSignInForm();
+
+        } catch (error) {
+            console.error('Sign up error:', error);
+            this.showToast(error.message || 'Failed to create account', 'error');
+        } finally {
+            document.getElementById('signUpBtn').disabled = false;
+            document.getElementById('signUpBtn').textContent = 'Create Account';
+        }
+    }
+
+    async signIn() {
+        const email = document.getElementById('loginEmail').value.trim();
+        const password = document.getElementById('loginPassword').value;
+
+        if (!email || !password) {
+            this.showToast('Please fill in all fields', 'error');
+            return;
+        }
+
+        try {
+            document.getElementById('signInBtn').disabled = true;
+            document.getElementById('signInBtn').textContent = 'Signing In...';
+
+            const { data, error } = await this.supabase.auth.signInWithPassword({
+                email: email,
+                password: password
+            });
+
+            if (error) throw error;
+
+        } catch (error) {
+            console.error('Sign in error:', error);
+            this.showToast(error.message || 'Failed to sign in', 'error');
+        } finally {
+            document.getElementById('signInBtn').disabled = false;
+            document.getElementById('signInBtn').textContent = 'Sign In';
+        }
+    }
+
+    async signOut() {
+        try {
+            const { error } = await this.supabase.auth.signOut();
+            if (error) throw error;
+            
+        } catch (error) {
+            console.error('Sign out error:', error);
+            this.showToast('Failed to sign out', 'error');
+        }
+    }
+
+    async fetchUserDevices() {
+        if (!this.supabase || !this.user) return;
+        
+        const { data, error } = await this.supabase
+            .from('devices')
+            .select('*')
+            .eq('user_id', this.user.id);
+        
         if (error) {
             console.error('Error fetching devices:', error);
             this.showToast('Could not fetch devices', 'error');
             return;
         }
-        this.devices = data;
+        
+        this.devices = data || [];
         this.renderDevices();
     }
 
     setupRealtimeSubscriptions() {
-        if (!this.supabase) return;
+        if (!this.supabase || !this.user) return;
+        
         this.supabase
-            .channel('public:devices')
-            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'devices' }, payload => {
+            .channel('user-devices')
+            .on('postgres_changes', { 
+                event: 'UPDATE', 
+                schema: 'public', 
+                table: 'devices',
+                filter: `user_id=eq.${this.user.id}`
+            }, payload => {
                 console.log('Device state changed:', payload.new);
                 this.handleDeviceUpdate(payload.new);
             })
-            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'devices' }, payload => {
+            .on('postgres_changes', { 
+                event: 'INSERT', 
+                schema: 'public', 
+                table: 'devices',
+                filter: `user_id=eq.${this.user.id}`
+            }, payload => {
                 console.log('New device added:', payload.new);
                 this.handleDeviceInsert(payload.new);
             })
             .subscribe();
+    }
+
+    // Device claiming functionality
+    openClaimDeviceModal() {
+        document.getElementById('claimDeviceModal').classList.add('active');
+        document.getElementById('deviceMacAddress').value = '';
+    }
+
+    closeClaimDeviceModal() {
+        document.getElementById('claimDeviceModal').classList.remove('active');
+    }
+
+    async claimDevice() {
+        const macAddress = document.getElementById('deviceMacAddress').value.trim().toUpperCase();
+        
+        if (!macAddress) {
+            this.showToast('Please enter a MAC address', 'error');
+            return;
+        }
+
+        // Basic MAC address validation
+        const macRegex = /^([0-9A-F]{2}[:-]){5}([0-9A-F]{2})$/;
+        if (!macRegex.test(macAddress)) {
+            this.showToast('Please enter a valid MAC address (AA:BB:CC:DD:EE:FF)', 'error');
+            return;
+        }
+
+        try {
+            document.getElementById('saveClaimDevice').disabled = true;
+            document.getElementById('saveClaimDevice').textContent = 'Claiming...';
+
+            // Call the claim-device Edge Function
+            const { data, error } = await this.supabase.functions.invoke('claim-device', {
+                body: { mac_address: macAddress }
+            });
+
+            if (error) throw error;
+
+            this.closeClaimDeviceModal();
+            this.showToast('Device claimed successfully!', 'success');
+            
+            // Refresh devices list
+            await this.fetchUserDevices();
+
+        } catch (error) {
+            console.error('Claim device error:', error);
+            this.showToast(error.message || 'Failed to claim device. Make sure the MAC address is correct and the device is available.', 'error');
+        } finally {
+            document.getElementById('saveClaimDevice').disabled = false;
+            document.getElementById('saveClaimDevice').textContent = 'Claim Device';
+        }
+    }
+
+    handleDeviceUpdate(updatedDevice) {
+        const device = this.devices.find(d => d.id === updatedDevice.id);
+        if (device) {
+            // Update device properties
+            Object.assign(device, updatedDevice);
+            this.updateDeviceUI(device);
+            
+            // Stop voice listening if a voice command was being processed
+            if (this.isProcessingVoiceCommand && this.isListening) {
+                this.stopVoiceControlAfterCommand();
+            }
+        }
+    }
+
+    handleDeviceInsert(newDevice) {
+        // Add new device to local array
+        this.devices.push(newDevice);
+        
+        // Add device card to UI
+        const grid = document.getElementById('deviceGrid');
+        const deviceCard = this.createDeviceCard(newDevice);
+        grid.appendChild(deviceCard);
+        
+        this.showToast(`New device "${newDevice.name}" added successfully!`, 'success');
+    }
+
+    async toggleDevice(deviceId) {
+        const device = this.devices.find(d => d.id === deviceId);
+        if (!device) return;
+
+        const newState = device.state ? 0 : 1;
+        
+        const { error } = await this.supabase
+            .from('devices')
+            .update({ state: newState, updated_at: new Date() })
+            .eq('id', deviceId);
+
+        if (error) {
+            this.showToast('Failed to update device', 'error');
+            return;
+        }
+
+        this.showToast(`${device.name} turned ${newState ? 'ON' : 'OFF'}`, 'success');
+    }
+
+    async setDeviceState(deviceId, newState) {
+        const device = this.devices.find(d => d.id === deviceId);
+        if (!device || device.state === newState) return;
+
+        const { error } = await this.supabase
+            .from('devices')
+            .update({ state: newState, updated_at: new Date() })
+            .eq('id', deviceId);
+
+        if (error) {
+            this.showToast(`Failed to update ${device.name}`, 'error');
+            return;
+        }
+    }
+    
+    updateConnectionStatus(status, message) {
+        const statusBanner = document.getElementById('statusBanner');
+        const statusIcon = document.getElementById('statusIcon');
+        const statusText = document.getElementById('statusText');
+
+        statusBanner.className = `status-banner ${status}`;
+        statusIcon.textContent = status === 'connected' ? '🟢' : '🔴';
+        statusText.textContent = message;
+    }
+    
+    renderDevices() {
+        const grid = document.getElementById('deviceGrid');
+        grid.innerHTML = '';
+
+        this.devices.forEach(device => {
+            const deviceCard = this.createDeviceCard(device);
+            grid.appendChild(deviceCard);
+        });
+    }
+
+    createDeviceCard(device) {
+        const card = document.createElement('div');
+        card.className = `device-card ${device.state ? 'device-on' : ''}`;
+        card.dataset.deviceId = device.id;
+
+        const icons = {
+            light: '💡',
+            fan: '🌀',
+            outlet: '🔌',
+            motor: '⚙️',
+            heater: '🔥',
+            cooler: '❄️',
+        };
+        const type = device.name.toLowerCase().includes('light') ? 'light' :
+                     device.name.toLowerCase().includes('fan') ? 'fan' : 
+                     device.name.toLowerCase().includes('outlet') ? 'outlet' :
+                     device.name.toLowerCase().includes('motor') ? 'motor' :
+                     device.name.toLowerCase().includes('heater') ? 'heater' :
+                     device.name.toLowerCase().includes('cooler') ? 'cooler' : 'outlet';
+
+        card.innerHTML = `
+            <div class="device-header">
+                <div class="device-info">
+                    <h3 class="device-name">${device.name}</h3>
+                    <div class="device-gpio">GPIO ${device.gpio}</div>
+                </div>
+                <div class="device-actions">
+                    <button class="edit-device-btn" title="Rename Device">
+                        <span class="edit-icon">✏️</span>
+                    </button>
+                    <div class="device-icon">${icons[type] || '⚡️'}</div>
+                </div>
+            </div>
+            <div class="device-controls">
+                <div class="device-status">${device.state ? 'ON' : 'OFF'}</div>
+                <button class="toggle-switch ${device.state ? 'active' : ''}" 
+                        onclick="app.toggleDevice(${device.id})"></button>
+            </div>
+        `;
+
+        return card;
+    }
+    
+    updateDeviceUI(device) {
+        const card = document.querySelector(`[data-device-id="${device.id}"]`);
+        if (!card) return;
+
+        const toggle = card.querySelector('.toggle-switch');
+        const status = card.querySelector('.device-status');
+
+        if (device.state) {
+            card.classList.add('device-on');
+            toggle.classList.add('active');
+            status.textContent = 'ON';
+        } else {
+            card.classList.remove('device-on');
+            toggle.classList.remove('active');
+            status.textContent = 'OFF';
+        }
+    }
+
+    setupVoiceControl() {
+        if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            this.recognition = new SpeechRecognition();
+            this.recognition.continuous = true;
+            this.recognition.interimResults = false;
+            this.recognition.lang = 'en-US';
+
+            this.recognition.onresult = (event) => {
+                const command = event.results[event.results.length - 1][0].transcript.toLowerCase();
+                console.log('Voice command:', command);
+                this.processVoiceCommand(command);
+            };
+
+            this.recognition.onerror = (event) => {
+                console.error('Speech recognition error:', event.error);
+                this.showToast('Voice recognition error', 'error');
+            };
+
+            this.recognition.onend = () => {
+                if (this.isListening) {
+                    this.recognition.start(); // Restart if still listening
+                }
+            };
+        } else {
+            document.getElementById('voiceBtn').style.display = 'none';
+            console.warn('Speech recognition not supported');
+        }
+    }
+
+    toggleVoiceControl() {
+        if (this.isListening) {
+            this.stopVoiceControl();
+        } else {
+            this.startVoiceControl();
+        }
+    }
+
+    startVoiceControl() {
+        if (!this.recognition) return;
+
+        this.isListening = true;
+        this.isProcessingVoiceCommand = false;
+        this.recognition.start();
+        document.getElementById('voicePanel').style.display = 'block';
+        this.showToast('Voice control activated', 'success');
+    }
+
+    stopVoiceControl() {
+        if (!this.recognition) return;
+
+        this.isListening = false;
+        this.isProcessingVoiceCommand = false;
+        this.recognition.stop();
+        document.getElementById('voicePanel').style.display = 'none';
+        this.showToast('Voice control deactivated', 'success');
+    }
+
+    stopVoiceControlAfterCommand() {
+        if (!this.recognition) return;
+
+        this.isListening = false;
+        this.isProcessingVoiceCommand = false;
+        this.recognition.stop();
+        document.getElementById('voicePanel').style.display = 'none';
+        this.showToast('Voice command executed. Tap voice button to give another command.', 'info');
     }
 
     handleDeviceUpdate(updatedDevice) {
@@ -859,8 +1326,7 @@ class HomeAutomationApp {
                         gpio: gpio,
                         state: 0, // Default to OFF
                         device_type: type,
-                        //created_at: new Date().toISOString(),
-                        //updated_at: new Date().toISOString()
+                        user_id: this.user.id // Associate with current user
                     }
                 ])
                 .select();
