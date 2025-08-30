@@ -21,6 +21,22 @@ class HomeAutomationApp {
 
     setupEventListeners() {
         // Authentication event listeners
+        this.setupAuthEventListeners();
+        
+        // Modal event listeners
+        this.setupModalEventListeners();
+        
+        // Voice control event listeners
+        this.setupVoiceEventListeners();
+        
+        // Device management event listeners
+        this.setupDeviceEventListeners();
+        
+        // Keyboard event listeners
+        this.setupKeyboardEventListeners();
+    }
+
+    setupAuthEventListeners() {
         document.getElementById('showSignUpForm').addEventListener('click', (e) => {
             e.preventDefault();
             this.showSignUpForm();
@@ -32,50 +48,49 @@ class HomeAutomationApp {
         document.getElementById('signInBtn').addEventListener('click', () => this.signIn());
         document.getElementById('signUpBtn').addEventListener('click', () => this.signUp());
         document.getElementById('logoutBtn').addEventListener('click', () => this.signOut());
+    }
 
-        // Claim Device event listeners
+    setupModalEventListeners() {
+        // Claim Device Modal
         document.getElementById('claimDeviceBtn').addEventListener('click', () => this.openClaimDeviceModal());
         document.getElementById('closeClaimDevice').addEventListener('click', () => this.closeClaimDeviceModal());
         document.getElementById('cancelClaimDevice').addEventListener('click', () => this.closeClaimDeviceModal());
         document.getElementById('saveClaimDevice').addEventListener('click', () => this.claimDevice());
 
-        // Settings event listeners
+        // Settings Modal
         document.getElementById('settingsBtn').addEventListener('click', () => this.openSettings());
         document.getElementById('closeSettings').addEventListener('click', () => this.closeSettings());
         document.getElementById('cancelSettings').addEventListener('click', () => this.closeSettings());
         document.getElementById('saveSettings').addEventListener('click', () => this.saveSettings());
 
-        // Voice control event listeners
-        document.getElementById('voiceBtn').addEventListener('click', () => this.toggleVoiceControl());
-        document.getElementById('stopVoiceBtn').addEventListener('click', () => this.stopVoiceControl());
-
-        // Add Device Modal Event Listeners
+        // Add Device Modal
         document.getElementById('addDeviceBtn').addEventListener('click', () => this.openAddDeviceModal());
         document.getElementById('closeAddDevice').addEventListener('click', () => this.closeAddDeviceModal());
         document.getElementById('cancelAddDevice').addEventListener('click', () => this.closeAddDeviceModal());
         document.getElementById('saveAddDevice').addEventListener('click', () => this.addDevice());
 
-        // Rename Device Modal Event Listeners (will be added when modal is created)
+        // Modal overlay listeners for closing
+        this.setupModalEventListeners('settingsModal', () => this.closeSettings());
+        this.setupModalEventListeners('addDeviceModal', () => this.closeAddDeviceModal());
+        this.setupModalEventListeners('claimDeviceModal', () => this.closeClaimDeviceModal());
+    }
+
+    setupVoiceEventListeners() {
+        document.getElementById('voiceBtn').addEventListener('click', () => this.toggleVoiceControl());
+        document.getElementById('stopVoiceBtn').addEventListener('click', () => this.stopVoiceControl());
+    }
+
+    setupDeviceEventListeners() {
+        // Rename Device Modal Event Listeners
         document.addEventListener('click', (e) => {
             if (e.target.classList.contains('edit-device-btn')) {
                 const deviceId = e.target.closest('.device-card').dataset.deviceId;
                 this.openRenameDeviceModal(deviceId);
             }
         });
+    }
 
-        // Modal overlay listeners
-        document.getElementById('settingsModal').addEventListener('click', (e) => {
-            if (e.target.classList.contains('modal-overlay')) this.closeSettings();
-        });
-
-        document.getElementById('addDeviceModal').addEventListener('click', (e) => {
-            if (e.target.classList.contains('modal-overlay')) this.closeAddDeviceModal();
-        });
-
-        document.getElementById('claimDeviceModal').addEventListener('click', (e) => {
-            if (e.target.classList.contains('modal-overlay')) this.closeClaimDeviceModal();
-        });
-
+    setupKeyboardEventListeners() {
         // Enter key listeners for forms
         document.getElementById('loginPassword').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') this.signIn();
@@ -209,8 +224,11 @@ class HomeAutomationApp {
         const password = document.getElementById('signupPassword').value;
         const username = document.getElementById('signupUsername').value.trim();
 
-        if (!email || !password || !username) {
-            this.showToast('Please fill in all fields', 'error');
+        if (!this.validateForm([
+            { value: email, name: 'email' },
+            { value: password, name: 'password' },
+            { value: username, name: 'username' }
+        ])) {
             return;
         }
 
@@ -220,8 +238,7 @@ class HomeAutomationApp {
         }
 
         try {
-            document.getElementById('signUpBtn').disabled = true;
-            document.getElementById('signUpBtn').textContent = 'Creating Account...';
+            await this.updateButtonState('signUpBtn', true, 'Create Account', 'Creating Account...');
 
             const { data, error } = await this.supabase.auth.signUp({
                 email: email,
@@ -242,8 +259,7 @@ class HomeAutomationApp {
             console.error('Sign up error:', error);
             this.showToast(error.message || 'Failed to create account', 'error');
         } finally {
-            document.getElementById('signUpBtn').disabled = false;
-            document.getElementById('signUpBtn').textContent = 'Create Account';
+            await this.updateButtonState('signUpBtn', false, 'Create Account', 'Creating Account...');
         }
     }
 
@@ -251,14 +267,15 @@ class HomeAutomationApp {
         const email = document.getElementById('loginEmail').value.trim();
         const password = document.getElementById('loginPassword').value;
 
-        if (!email || !password) {
-            this.showToast('Please fill in all fields', 'error');
+        if (!this.validateForm([
+            { value: email, name: 'email' },
+            { value: password, name: 'password' }
+        ])) {
             return;
         }
 
         try {
-            document.getElementById('signInBtn').disabled = true;
-            document.getElementById('signInBtn').textContent = 'Signing In...';
+            await this.updateButtonState('signInBtn', true, 'Sign In', 'Signing In...');
 
             const { data, error } = await this.supabase.auth.signInWithPassword({
                 email: email,
@@ -271,8 +288,7 @@ class HomeAutomationApp {
             console.error('Sign in error:', error);
             this.showToast(error.message || 'Failed to sign in', 'error');
         } finally {
-            document.getElementById('signInBtn').disabled = false;
-            document.getElementById('signInBtn').textContent = 'Sign In';
+            await this.updateButtonState('signInBtn', false, 'Sign In', 'Signing In...');
         }
     }
 
@@ -364,12 +380,12 @@ class HomeAutomationApp {
 
     // Device claiming functionality
     openClaimDeviceModal() {
-        document.getElementById('claimDeviceModal').classList.add('active');
+        this.openModal('claimDeviceModal');
         document.getElementById('deviceMacAddress').value = '';
     }
 
     closeClaimDeviceModal() {
-        document.getElementById('claimDeviceModal').classList.remove('active');
+        this.closeModal('claimDeviceModal');
     }
 
     async claimDevice() {
@@ -380,18 +396,14 @@ class HomeAutomationApp {
             return;
         }
 
-        // Basic MAC address validation
-        const macRegex = /^([0-9A-F]{2}[:-]){5}([0-9A-F]{2})$/;
-        if (!macRegex.test(macAddress)) {
+        if (!this.validateMacAddress(macAddress)) {
             this.showToast('Please enter a valid MAC address (AA:BB:CC:DD:EE:FF)', 'error');
             return;
         }
 
         try {
-            document.getElementById('saveClaimDevice').disabled = true;
-            document.getElementById('saveClaimDevice').textContent = 'Claiming...';
+            await this.updateButtonState('saveClaimDevice', true, 'Claim Device', 'Claiming...');
 
-            // Call the claim-device Edge Function
             const { data, error } = await this.supabase.functions.invoke('claim-device', {
                 body: { mac_address: macAddress }
             });
@@ -400,16 +412,13 @@ class HomeAutomationApp {
 
             this.closeClaimDeviceModal();
             this.showToast('Device claimed successfully!', 'success');
-            
-            // Refresh devices list
             await this.fetchUserDevices();
 
         } catch (error) {
             console.error('Claim device error:', error);
             this.showToast(error.message || 'Failed to claim device. Make sure the MAC address is correct and the device is available.', 'error');
         } finally {
-            document.getElementById('saveClaimDevice').disabled = false;
-            document.getElementById('saveClaimDevice').textContent = 'Claim Device';
+            await this.updateButtonState('saveClaimDevice', false, 'Claim Device', 'Claiming...');
         }
     }
 
@@ -644,31 +653,9 @@ class HomeAutomationApp {
         this.showToast('Voice command executed. Tap voice button to give another command.', 'info');
     }
 
-    async processVoiceCommand(command) {
-        const device = this.devices.find(d => d.id === deviceId);
-        if (!device) return;
-
-        const newState = device.state ? 0 : 1;
-        
-        const { error } = await this.supabase
-            .from('devices')
-            .update({ state: newState, updated_at: new Date() })
-            .eq('id', deviceId);
-
-        if (error) {
-            this.showToast('Failed to update device', 'error');
-            return;
-        }
-
-        this.showToast(`${device.name} turned ${newState ? 'ON' : 'OFF'}`, 'success');
-        
-        // Don't stop voice control for manual toggles, only for voice commands
-        // The isProcessingVoiceCommand flag will be false for manual toggles
-    }
-
     async setDeviceState(deviceId, newState) {
         const device = this.devices.find(d => d.id === deviceId);
-        if (!device || device.state === newState) return; // Do nothing if device not found or state is already correct
+        if (!device || device.state === newState) return;
 
         const { error } = await this.supabase
             .from('devices')
@@ -679,8 +666,6 @@ class HomeAutomationApp {
             this.showToast(`Failed to update ${device.name}`, 'error');
             return;
         }
-
-        // We don't show a toast here to avoid spamming notifications for "all" commands
     }
     
     updateConnectionStatus(status, message) {
@@ -708,21 +693,8 @@ class HomeAutomationApp {
         card.className = `device-card ${device.state ? 'device-on' : ''}`;
         card.dataset.deviceId = device.id;
 
-        const icons = {
-            light: '💡',
-            fan: '🌀',
-            outlet: '🔌',
-            motor: '⚙️',
-            heater: '🔥',
-            cooler: '❄️',
-        };
-        const type = device.name.toLowerCase().includes('light') ? 'light' :
-                     device.name.toLowerCase().includes('fan') ? 'fan' : 
-                     device.name.toLowerCase().includes('outlet') ? 'outlet' :
-                     device.name.toLowerCase().includes('motor') ? 'motor' :
-                     device.name.toLowerCase().includes('heater') ? 'heater' :
-                     device.name.toLowerCase().includes('cooler') ? 'cooler' : 'outlet';
-
+        const deviceType = this.getDeviceType(device.name);
+        const deviceIcon = this.getDeviceIcon(deviceType);
 
         card.innerHTML = `
             <div class="device-header">
@@ -734,7 +706,7 @@ class HomeAutomationApp {
                     <button class="edit-device-btn" title="Rename Device">
                         <span class="edit-icon">✏️</span>
                     </button>
-                    <div class="device-icon">${icons[type] || '⚡️'}</div>
+                    <div class="device-icon">${deviceIcon}</div>
                 </div>
             </div>
             <div class="device-controls">
@@ -745,6 +717,29 @@ class HomeAutomationApp {
         `;
 
         return card;
+    }
+
+    getDeviceType(deviceName) {
+        const name = deviceName.toLowerCase();
+        if (name.includes('light')) return 'light';
+        if (name.includes('fan')) return 'fan';
+        if (name.includes('outlet')) return 'outlet';
+        if (name.includes('motor')) return 'motor';
+        if (name.includes('heater')) return 'heater';
+        if (name.includes('cooler')) return 'cooler';
+        return 'outlet';
+    }
+
+    getDeviceIcon(type) {
+        const icons = {
+            light: '💡',
+            fan: '🌀',
+            outlet: '🔌',
+            motor: '⚙️',
+            heater: '🔥',
+            cooler: '❄️',
+        };
+        return icons[type] || '⚡️';
     }
     
     updateDeviceUI(device) {
@@ -786,7 +781,7 @@ class HomeAutomationApp {
 
             this.recognition.onend = () => {
                 if (this.isListening) {
-                    this.recognition.start(); // Restart if still listening
+                    this.recognition.start();
                 }
             };
         } else {
@@ -807,7 +802,7 @@ class HomeAutomationApp {
         if (!this.recognition) return;
 
         this.isListening = true;
-        this.isProcessingVoiceCommand = false; // Reset processing flag when starting
+        this.isProcessingVoiceCommand = false;
         this.recognition.start();
         document.getElementById('voicePanel').style.display = 'block';
         this.showToast('Voice control activated', 'success');
@@ -1287,19 +1282,21 @@ class HomeAutomationApp {
     }
 
     openSettings() {
-        document.getElementById('settingsModal').classList.add('active');
+        this.openModal('settingsModal');
     }
 
     closeSettings() {
-        document.getElementById('settingsModal').classList.remove('active');
+        this.closeModal('settingsModal');
     }
 
     saveSettings() {
         const supabaseUrl = document.getElementById('supabaseUrl').value.trim();
         const supabaseKey = document.getElementById('supabaseKey').value.trim();
 
-        if (!supabaseUrl || !supabaseKey) {
-            this.showToast('Please fill in all Supabase fields', 'error');
+        if (!this.validateForm([
+            { value: supabaseUrl, name: 'Supabase URL' },
+            { value: supabaseKey, name: 'Supabase Key' }
+        ])) {
             return;
         }
 
@@ -1324,10 +1321,50 @@ class HomeAutomationApp {
         }, 3000);
     }
 
+    // =================== MODAL HELPER METHODS ===================
+    
+    openModal(modalId) {
+        document.getElementById(modalId).classList.add('active');
+    }
+    
+    closeModal(modalId) {
+        document.getElementById(modalId).classList.remove('active');
+    }
+    
+    setupModalEventListeners(modalId, closeCallback) {
+        const modal = document.getElementById(modalId);
+        modal.addEventListener('click', (e) => {
+            if (e.target.classList.contains('modal-overlay')) {
+                closeCallback();
+            }
+        });
+    }
+
+    async updateButtonState(buttonId, isLoading, originalText, loadingText) {
+        const button = document.getElementById(buttonId);
+        button.disabled = isLoading;
+        button.textContent = isLoading ? loadingText : originalText;
+    }
+
+    validateForm(fields) {
+        for (const field of fields) {
+            if (!field.value || !field.value.trim()) {
+                this.showToast(`Please fill in ${field.name}`, 'error');
+                return false;
+            }
+        }
+        return true;
+    }
+
+    validateMacAddress(macAddress) {
+        const macRegex = /^([0-9A-F]{2}[:-]){5}([0-9A-F]{2})$/;
+        return macRegex.test(macAddress);
+    }
+
     // =================== DEVICE MANAGEMENT METHODS ===================
 
     openAddDeviceModal() {
-        document.getElementById('addDeviceModal').classList.add('active');
+        this.openModal('addDeviceModal');
         // Clear form fields
         document.getElementById('newDeviceName').value = '';
         document.getElementById('newDeviceMacAddress').value = '';
@@ -1336,7 +1373,7 @@ class HomeAutomationApp {
     }
 
     closeAddDeviceModal() {
-        document.getElementById('addDeviceModal').classList.remove('active');
+        this.closeModal('addDeviceModal');
     }
 
     async addDevice() {
@@ -1346,19 +1383,14 @@ class HomeAutomationApp {
         const type = document.getElementById('newDeviceType').value;
 
         // Validation
-        if (!name) {
-            this.showToast('Please enter a device name', 'error');
+        if (!this.validateForm([
+            { value: name, name: 'device name' },
+            { value: macAddress, name: 'MAC address' }
+        ])) {
             return;
         }
 
-        if (!macAddress) {
-            this.showToast('Please enter a MAC address', 'error');
-            return;
-        }
-
-        // Validate MAC address format
-        const macRegex = /^([0-9A-F]{2}[:-]){5}([0-9A-F]{2})$/;
-        if (!macRegex.test(macAddress)) {
+        if (!this.validateMacAddress(macAddress)) {
             this.showToast('Please enter a valid MAC address (AA:BB:CC:DD:EE:FF)', 'error');
             return;
         }
@@ -1368,14 +1400,13 @@ class HomeAutomationApp {
             return;
         }
 
-        // Check if GPIO is already in use
+        // Check for duplicate GPIO and MAC
         const existingDevice = this.devices.find(d => d.gpio === gpio);
         if (existingDevice) {
             this.showToast(`GPIO ${gpio} is already in use by "${existingDevice.name}"`, 'error');
             return;
         }
 
-        // Check if MAC address is already in use
         const existingMacDevice = this.devices.find(d => d.mac_address === macAddress);
         if (existingMacDevice) {
             this.showToast(`MAC address ${macAddress} is already in use by "${existingMacDevice.name}"`, 'error');
@@ -1383,30 +1414,23 @@ class HomeAutomationApp {
         }
 
         try {
-            document.getElementById('saveAddDevice').disabled = true;
-            document.getElementById('saveAddDevice').textContent = 'Adding Device...';
+            await this.updateButtonState('saveAddDevice', true, 'Add Device', 'Adding Device...');
 
             const { data, error } = await this.supabase
                 .from('devices')
-                .insert([
-                    {
-                        name: name,
-                        mac_address: macAddress,
-                        gpio: gpio,
-                        state: 0, // Default to OFF
-                        device_type: type,
-                        user_id: this.user.id, // Associate with current user
-                        created_at: new Date().toISOString(),
-                        updated_at: new Date().toISOString()
-                    }
-                ])
+                .insert([{
+                    name: name,
+                    mac_address: macAddress,
+                    gpio: gpio,
+                    state: 0,
+                    device_type: type,
+                    user_id: this.user.id,
+                    created_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString()
+                }])
                 .select();
 
-            if (error) {
-                console.error('Error adding device:', error);
-                this.showToast('Failed to add device. Please try again.', 'error');
-                return;
-            }
+            if (error) throw error;
 
             // Clean up unclaimed_devices table if this MAC was there
             await this.supabase
@@ -1421,8 +1445,7 @@ class HomeAutomationApp {
             console.error('Error adding device:', error);
             this.showToast('Failed to add device. Please check your connection.', 'error');
         } finally {
-            document.getElementById('saveAddDevice').disabled = false;
-            document.getElementById('saveAddDevice').textContent = 'Add Device';
+            await this.updateButtonState('saveAddDevice', false, 'Add Device', 'Adding Device...');
         }
     }
 
@@ -1476,10 +1499,7 @@ class HomeAutomationApp {
     }
 
     closeRenameDeviceModal() {
-        const modal = document.getElementById('renameDeviceModal');
-        if (modal) {
-            modal.classList.remove('active');
-        }
+        this.closeModal('renameDeviceModal');
     }
 
     async renameDevice() {
@@ -1487,9 +1507,7 @@ class HomeAutomationApp {
         const deviceId = parseInt(modal.dataset.deviceId);
         const newName = document.getElementById('renameDeviceName').value.trim();
 
-        // Validation
-        if (!newName) {
-            this.showToast('Please enter a device name', 'error');
+        if (!this.validateForm([{ value: newName, name: 'device name' }])) {
             return;
         }
 
@@ -1513,11 +1531,7 @@ class HomeAutomationApp {
                 })
                 .eq('id', deviceId);
 
-            if (error) {
-                console.error('Error renaming device:', error);
-                this.showToast('Failed to rename device. Please try again.', 'error');
-                return;
-            }
+            if (error) throw error;
 
             // Update local device object
             device.name = newName;
