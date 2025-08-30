@@ -21,22 +21,6 @@ class HomeAutomationApp {
 
     setupEventListeners() {
         // Authentication event listeners
-        this.setupAuthEventListeners();
-        
-        // Modal event listeners
-        this.setupModalEventListeners();
-        
-        // Voice control event listeners
-        this.setupVoiceEventListeners();
-        
-        // Device management event listeners
-        this.setupDeviceEventListeners();
-        
-        // Keyboard event listeners
-        this.setupKeyboardEventListeners();
-    }
-
-    setupAuthEventListeners() {
         document.getElementById('showSignUpForm').addEventListener('click', (e) => {
             e.preventDefault();
             this.showSignUpForm();
@@ -48,49 +32,50 @@ class HomeAutomationApp {
         document.getElementById('signInBtn').addEventListener('click', () => this.signIn());
         document.getElementById('signUpBtn').addEventListener('click', () => this.signUp());
         document.getElementById('logoutBtn').addEventListener('click', () => this.signOut());
-    }
 
-    setupModalEventListeners() {
-        // Claim Device Modal
+        // Claim Device event listeners
         document.getElementById('claimDeviceBtn').addEventListener('click', () => this.openClaimDeviceModal());
         document.getElementById('closeClaimDevice').addEventListener('click', () => this.closeClaimDeviceModal());
         document.getElementById('cancelClaimDevice').addEventListener('click', () => this.closeClaimDeviceModal());
         document.getElementById('saveClaimDevice').addEventListener('click', () => this.claimDevice());
 
-        // Settings Modal
+        // Settings event listeners
         document.getElementById('settingsBtn').addEventListener('click', () => this.openSettings());
         document.getElementById('closeSettings').addEventListener('click', () => this.closeSettings());
         document.getElementById('cancelSettings').addEventListener('click', () => this.closeSettings());
         document.getElementById('saveSettings').addEventListener('click', () => this.saveSettings());
 
-        // Add Device Modal
+        // Voice control event listeners
+        document.getElementById('voiceBtn').addEventListener('click', () => this.toggleVoiceControl());
+        document.getElementById('stopVoiceBtn').addEventListener('click', () => this.stopVoiceControl());
+
+        // Add Device Modal Event Listeners
         document.getElementById('addDeviceBtn').addEventListener('click', () => this.openAddDeviceModal());
         document.getElementById('closeAddDevice').addEventListener('click', () => this.closeAddDeviceModal());
         document.getElementById('cancelAddDevice').addEventListener('click', () => this.closeAddDeviceModal());
         document.getElementById('saveAddDevice').addEventListener('click', () => this.addDevice());
 
-        // Modal overlay listeners for closing
-        this.setupModalEventListeners('settingsModal', () => this.closeSettings());
-        this.setupModalEventListeners('addDeviceModal', () => this.closeAddDeviceModal());
-        this.setupModalEventListeners('claimDeviceModal', () => this.closeClaimDeviceModal());
-    }
-
-    setupVoiceEventListeners() {
-        document.getElementById('voiceBtn').addEventListener('click', () => this.toggleVoiceControl());
-        document.getElementById('stopVoiceBtn').addEventListener('click', () => this.stopVoiceControl());
-    }
-
-    setupDeviceEventListeners() {
-        // Rename Device Modal Event Listeners
+        // Rename Device Modal Event Listeners (will be added when modal is created)
         document.addEventListener('click', (e) => {
             if (e.target.classList.contains('edit-device-btn')) {
                 const deviceId = e.target.closest('.device-card').dataset.deviceId;
                 this.openRenameDeviceModal(deviceId);
             }
         });
-    }
 
-    setupKeyboardEventListeners() {
+        // Modal overlay listeners
+        document.getElementById('settingsModal').addEventListener('click', (e) => {
+            if (e.target.classList.contains('modal-overlay')) this.closeSettings();
+        });
+
+        document.getElementById('addDeviceModal').addEventListener('click', (e) => {
+            if (e.target.classList.contains('modal-overlay')) this.closeAddDeviceModal();
+        });
+
+        document.getElementById('claimDeviceModal').addEventListener('click', (e) => {
+            if (e.target.classList.contains('modal-overlay')) this.closeClaimDeviceModal();
+        });
+
         // Enter key listeners for forms
         document.getElementById('loginPassword').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') this.signIn();
