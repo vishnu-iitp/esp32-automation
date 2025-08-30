@@ -16,9 +16,14 @@ serve(async (req) => {
 
   try {
     // Get environment variables - using correct spelling
-    const supabaseUrl = Deno.env.get('SPABASE_URL')
-    const supabaseServiceKey = Deno.env.get('SPABASE_SERVICE_ROLE_KEY')
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
     const jwtSecret = Deno.env.get('SPABASE_JWT_SECRET')
+    console.log("--- DEBUGGING ENVIRONMENT VARIABLES ---");
+    console.log("Supabase URL Loaded:", !!supabaseUrl);
+    console.log("Service Key Loaded:", !!supabaseServiceKey);
+    console.log("JWT Secret Loaded:", !!jwtSecret);
+    console.log("-------------------------------------");
 
     if (!supabaseUrl || !supabaseServiceKey || !jwtSecret) {
       console.error('FATAL: Missing one or more required environment variables.');
@@ -58,7 +63,7 @@ serve(async (req) => {
 
     // Create Supabase client with service role key for admin operations
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
-    
+
     // Verify the calling user's JWT
     const { data: { user }, error: userError } = await supabase.auth.getUser(
       authorization.replace('Bearer ', '')
@@ -126,7 +131,7 @@ serve(async (req) => {
       .update({
         user_id: user.id,
         device_jwt: deviceJwt,
-        updated_at: new Date().toISOString()
+        created_at: new Date().toISOString()
       })
       .eq('id', deviceId)
 

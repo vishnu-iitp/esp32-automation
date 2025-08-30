@@ -1,13 +1,14 @@
 /*
  * ESP32 Home Automation System with Secure Supabase Integration
- * * Features:
+ * Features:
  * - Self-provisioning workflow for new devices
  * - Secure JWT-based authentication after claiming
  * - Real-time device control via Supabase WebSocket
  * - Robust EEPROM credential management
  * - Automatic fallback to provisioning mode if credentials are invalid
- * * Author: ESP32 Home Automation Team
- * Version: 3.0 (Secure Provisioning System)
+ * - Handles reboots before device is claimed with URL encoding
+ * Author: ESP32 Home Automation Team
+ * Version: 3.2 (URL Encoding Fix)
  */
 
 #include <WiFi.h>
@@ -17,8 +18,8 @@
 #include <EEPROM.h>
 
 // =================== CONFIGURATION ===================
-const char* WIFI_SSID = "Avi";
-const char* WIFI_PASSWORD = "gymratss";
+const char* WIFI_SSID = "vivo";
+const char* WIFI_PASSWORD = "12345678";
 const char* SUPABASE_PROJECT_ID = "ahmseisassvgxbbccqyd";
 const char* SUPABASE_URL = "https://ahmseisassvgxbbccqyd.supabase.co";
 const char* SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFobXNlaXNhc3N2Z3hiYmNjcXlkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTYzOTgyNDEsImV4cCI6MjA3MTk3NDI0MX0.VR3dkEUvDzkH8s9YXQq3E3XCRSu62ldE1Qs9-DI1CaI";
@@ -61,14 +62,15 @@ void initializeGPIO(int gpio);
 bool loadAndValidateCredentials();
 void saveCredentials(const String& jwt, const String& uid, int devId);
 void clearCredentials();
-bool provisionDevice();
+int provisionDevice();
+bool getDeviceIdByMac();
 bool pollForCredentials();
 String getMacAddress();
 void connectToSupabaseWebSocket();
 
 void setup() {
     Serial.begin(115200);
-    Serial.println("\n=== ESP32 Home Automation (Secure Provisioning) ===");
+    Serial.println("\n=== ESP32 Home Automation (v3.2 URL Encoding Fix) ===");
     
     // Initialize EEPROM
     EEPROM.begin(EEPROM_SIZE);
@@ -99,24 +101,34 @@ void setup() {
         isProvisioned = false;
         
         // Start provisioning process
-        if (provisionDevice()) {
+        int provisionStatusCode = provisionDevice();
+
+        if (provisionStatusCode == 201) {
             Serial.println("Device registered successfully. Waiting for user to claim...");
-            // Start polling for credentials
-            while (!isProvisioned) {
-                if (pollForCredentials()) {
-                    Serial.println("Device claimed! Restarting to operational mode...");
-                    delay(2000);
-                    ESP.restart();
-                }
-                delay(POLLING_INTERVAL);
+        } else if (provisionStatusCode == 409) {
+            Serial.println("Device already in database (duplicate MAC). Fetching existing ID...");
+            if (!getDeviceIdByMac()) {
+                Serial.println("FATAL: Could not fetch existing device ID. Retrying on next boot.");
+                delay(10000);
+                ESP.restart();
             }
         } else {
-            Serial.println("Provisioning failed. Will retry on next boot.");
+            Serial.printf("Provisioning failed with HTTP code %d. Will retry on next boot.\n", provisionStatusCode);
             delay(10000);
             ESP.restart();
         }
+
+        Serial.println("Device is ready to be claimed. Starting to poll for credentials...");
+        while (true) {
+            if (pollForCredentials()) {
+                Serial.println("Device claimed! Restarting to operational mode...");
+                delay(2000);
+                ESP.restart();
+            }
+            delay(POLLING_INTERVAL);
+        }
     }
-} // <--- FIXED: Added the missing closing brace for setup()
+}
 
 void loop() {
     if (isProvisioned) {
@@ -126,57 +138,37 @@ void loop() {
             sendHeartbeat();
             lastHeartbeat = millis();
         }
-    } else {
-        // This part of the loop will likely not be reached due to ESP.restart()
-        // in setup(), but it's here as a fallback.
-        if (pollForCredentials()) {
-            Serial.println("Device claimed! Restarting to operational mode...");
-            delay(2000);
-            ESP.restart();
-        }
-        delay(POLLING_INTERVAL);
     }
 }
 
 // =================== CREDENTIAL MANAGEMENT ===================
-
 bool loadAndValidateCredentials() {
-    // Check if credentials are marked as valid
     uint8_t credentialsValid = EEPROM.read(CREDENTIALS_VALID_ADDR);
     if (credentialsValid != 0xAA) {
         Serial.println("No valid credentials marker found.");
         return false;
     }
-
-    // Read device JWT
     char jwtBuffer[MAX_JWT_SIZE + 1] = {0};
     for (int i = 0; i < MAX_JWT_SIZE; i++) {
         jwtBuffer[i] = EEPROM.read(DEVICE_JWT_ADDR + i);
         if (jwtBuffer[i] == 0) break;
     }
     deviceJwt = String(jwtBuffer);
-
-    // Read user ID
     char userIdBuffer[MAX_USER_ID_SIZE + 1] = {0};
     for (int i = 0; i < MAX_USER_ID_SIZE; i++) {
         userIdBuffer[i] = EEPROM.read(USER_ID_ADDR + i);
         if (userIdBuffer[i] == 0) break;
     }
     userId = String(userIdBuffer);
-
-    // Read device ID
     deviceId = 0;
     for (int i = 0; i < 4; i++) {
         deviceId |= (EEPROM.read(DEVICE_ID_ADDR + i) << (i * 8));
     }
-
-    // Validate that we have all required credentials
     if (deviceJwt.length() < 10 || userId.length() < 10 || deviceId <= 0) {
         Serial.println("Invalid credentials format found.");
         clearCredentials();
         return false;
     }
-
     Serial.printf("Loaded credentials: DeviceID=%d, UserID=%s, JWT length=%d\n", 
                   deviceId, userId.c_str(), deviceJwt.length());
     return true;
@@ -184,54 +176,32 @@ bool loadAndValidateCredentials() {
 
 void saveCredentials(const String& jwt, const String& uid, int devId) {
     Serial.println("Saving credentials to EEPROM...");
-    // Clear the credential areas first
-    for (int i = 0; i < MAX_JWT_SIZE; i++) {
-        EEPROM.write(DEVICE_JWT_ADDR + i, 0);
-    }
-    for (int i = 0; i < MAX_USER_ID_SIZE; i++) {
-        EEPROM.write(USER_ID_ADDR + i, 0);
-    }
-    for (int i = 0; i < 4; i++) {
-        EEPROM.write(DEVICE_ID_ADDR + i, 0);
-    }
-
-    // Save device JWT
+    for (int i = 0; i < MAX_JWT_SIZE; i++) EEPROM.write(DEVICE_JWT_ADDR + i, 0);
+    for (int i = 0; i < MAX_USER_ID_SIZE; i++) EEPROM.write(USER_ID_ADDR + i, 0);
+    for (int i = 0; i < 4; i++) EEPROM.write(DEVICE_ID_ADDR + i, 0);
     for (int i = 0; i < jwt.length() && i < MAX_JWT_SIZE - 1; i++) {
         EEPROM.write(DEVICE_JWT_ADDR + i, jwt[i]);
     }
-
-    // Save user ID
     for (int i = 0; i < uid.length() && i < MAX_USER_ID_SIZE - 1; i++) {
         EEPROM.write(USER_ID_ADDR + i, uid[i]);
     }
-
-    // Save device ID (as 4 bytes)
     for (int i = 0; i < 4; i++) {
         EEPROM.write(DEVICE_ID_ADDR + i, (devId >> (i * 8)) & 0xFF);
     }
-
-    // Mark credentials as valid
     EEPROM.write(CREDENTIALS_VALID_ADDR, 0xAA);
-    // Commit to EEPROM
     EEPROM.commit();
-    
-    // Update global variables
     deviceJwt = jwt;
     userId = uid;
     deviceId = devId;
-    
     Serial.println("Credentials saved successfully.");
 }
 
 void clearCredentials() {
     Serial.println("Clearing stored credentials...");
-    // Clear all credential areas by zeroing out the relevant part of EEPROM
-    for (int i = 0; i < CREDENTIALS_VALID_ADDR + 1; i++) {
+    for (int i = 0; i < EEPROM_SIZE; i++) {
         EEPROM.write(i, 0);
     }
     EEPROM.commit();
-    
-    // Reset global variables
     deviceJwt = "";
     userId = "";
     deviceId = -1;
@@ -240,8 +210,8 @@ void clearCredentials() {
 
 // =================== PROVISIONING FUNCTIONS ===================
 
-bool provisionDevice() {
-    Serial.println("Starting device provisioning...");
+int provisionDevice() {
+    Serial.println("Attempting to register device...");
     String macAddress = getMacAddress();
     String defaultName = "ESP32_" + macAddress.substring(macAddress.length() - 6);
     
@@ -251,12 +221,11 @@ bool provisionDevice() {
     http.addHeader("Authorization", "Bearer " + String(SUPABASE_ANON_KEY));
     http.addHeader("Prefer", "return=representation");
 
-    // Create JSON payload
     DynamicJsonDocument doc(512);
     doc["mac_address"] = macAddress;
     doc["name"] = defaultName;
-    doc["gpio"] = 23; // Default GPIO for first device
-    doc["state"] = 0; // Default OFF state
+    doc["gpio"] = 23;
+    doc["state"] = 0;
     
     String jsonString;
     serializeJson(doc, jsonString);
@@ -267,16 +236,11 @@ bool provisionDevice() {
     if (httpResponseCode == 201) {
         String response = http.getString();
         Serial.printf("Registration response: %s\n", response.c_str());
-        
-        // Parse response to get device ID
         DynamicJsonDocument responseDoc(1024);
         deserializeJson(responseDoc, response);
-        
         if (responseDoc.is<JsonArray>() && responseDoc.size() > 0) {
             deviceId = responseDoc[0]["id"];
-            Serial.printf("Device registered with ID: %d\n", deviceId);
-            http.end();
-            return true;
+            Serial.printf("Device registered with new ID: %d\n", deviceId);
         } else {
             Serial.println("Failed to parse device ID from response");
         }
@@ -286,15 +250,56 @@ bool provisionDevice() {
     }
     
     http.end();
+    return httpResponseCode;
+}
+
+bool getDeviceIdByMac() {
+    String macAddress = getMacAddress();
+    String urlEncodedMac = macAddress;
+    urlEncodedMac.replace(":", "%3A"); // <<< THE FIX IS HERE!
+
+    Serial.printf("Fetching existing device ID for MAC: %s\n", macAddress.c_str());
+
+    String url = String(SUPABASE_URL) + "/rest/v1/devices?mac_address=eq." + urlEncodedMac + "&select=id";
+    http.begin(url);
+    http.addHeader("apikey", SUPABASE_ANON_KEY);
+    http.addHeader("Authorization", "Bearer " + String(SUPABASE_ANON_KEY));
+
+    int httpResponseCode = http.GET();
+    if (httpResponseCode == 200) {
+        String response = http.getString();
+        DynamicJsonDocument doc(1024);
+        DeserializationError error = deserializeJson(doc, response);
+
+        if (error) {
+            Serial.print(F("deserializeJson() failed: "));
+            Serial.println(error.f_str());
+            http.end();
+            return false;
+        }
+
+        if (doc.is<JsonArray>() && doc.size() > 0) {
+            deviceId = doc[0]["id"];
+            Serial.printf("Successfully fetched existing device ID: %d\n", deviceId);
+            http.end();
+            return true;
+        } else {
+            Serial.println("Device not found via MAC address, though a conflict occurred.");
+        }
+    }
+    
+    Serial.printf("Failed to fetch existing device ID. HTTP code: %d\n", httpResponseCode);
+    http.end();
     return false;
 }
 
 bool pollForCredentials() {
     if (deviceId <= 0) {
-        Serial.println("No device ID available for polling");
+        Serial.println("Polling skipped: No device ID available.");
         return false;
     }
     
+    Serial.printf("Polling for credentials for device ID %d...\n", deviceId);
     String url = String(SUPABASE_URL) + "/rest/v1/devices?id=eq." + String(deviceId) + "&select=user_id,device_jwt";
     http.begin(url);
     http.addHeader("apikey", SUPABASE_ANON_KEY);
@@ -303,20 +308,15 @@ bool pollForCredentials() {
     int httpResponseCode = http.GET();
     if (httpResponseCode == 200) {
         String response = http.getString();
-        
         DynamicJsonDocument doc(1024);
         deserializeJson(doc, response);
-
         if (doc.is<JsonArray>() && doc.size() > 0) {
             JsonObject device = doc[0];
-            // Check if user_id and device_jwt are populated
             if (!device["user_id"].isNull() && !device["device_jwt"].isNull()) {
                 String receivedUserId = device["user_id"];
                 String receivedJwt = device["device_jwt"];
-                
-                Serial.println("Device has been claimed! Saving credentials...");
+                Serial.println("Credentials received! Device has been claimed.");
                 saveCredentials(receivedJwt, receivedUserId, deviceId);
-                
                 http.end();
                 return true;
             } else {
@@ -340,12 +340,9 @@ String getMacAddress() {
 }
 
 // =================== WEBSOCKET FUNCTIONS ===================
-
 void connectToSupabaseWebSocket() {
     String host = String(SUPABASE_PROJECT_ID) + ".supabase.co";
     String path = "/realtime/v1/websocket?apikey=" + String(SUPABASE_ANON_KEY) + "&vsn=1.0.0";
-    
-    // Add device JWT for authentication
     if (deviceJwt.length() > 10) {
         path += "&jwt=" + deviceJwt;
         Serial.println("Connecting with device JWT authentication...");
@@ -353,7 +350,6 @@ void connectToSupabaseWebSocket() {
         Serial.println("Warning: No device JWT available! Cannot connect to WebSocket.");
         return;
     }
-    
     webSocket.beginSSL(host.c_str(), 443, path.c_str());
     webSocket.onEvent(webSocketEvent);
     webSocket.setReconnectInterval(5000);
@@ -361,18 +357,13 @@ void connectToSupabaseWebSocket() {
 
 void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
     switch (type) {
-        case WStype_DISCONNECTED:
-            Serial.println("WebSocket Disconnected.");
-            break;
+        case WStype_DISCONNECTED: Serial.println("WebSocket Disconnected."); break;
         case WStype_CONNECTED:
             Serial.println("WebSocket Connected!");
             subscribeToDevicesTable();
             break;
-        case WStype_TEXT:
-            handleWebSocketMessage(payload, length);
-            break;
-        default:
-            break;
+        case WStype_TEXT: handleWebSocketMessage(payload, length); break;
+        default: break;
     }
 }
 
@@ -380,16 +371,13 @@ void subscribeToDevicesTable() {
     DynamicJsonDocument doc(1024);
     doc["topic"] = "realtime:public:devices";
     doc["event"] = "phx_join";
-    // Subscribe to both UPDATE and INSERT events
     doc["payload"]["config"]["postgres_changes"][0]["event"] = "UPDATE";
     doc["payload"]["config"]["postgres_changes"][0]["schema"] = "public";
     doc["payload"]["config"]["postgres_changes"][0]["table"] = "devices";
     doc["payload"]["config"]["postgres_changes"][1]["event"] = "INSERT";
     doc["payload"]["config"]["postgres_changes"][1]["schema"] = "public";
     doc["payload"]["config"]["postgres_changes"][1]["table"] = "devices";
-    
     doc["ref"] = messageRef++;
-    
     String message;
     serializeJson(doc, message);
     webSocket.sendTXT(message);
@@ -397,44 +385,34 @@ void subscribeToDevicesTable() {
 }
 
 void handleWebSocketMessage(uint8_t * payload, size_t length) {
-    DynamicJsonDocument doc(2048); // Increased size for safety
+    DynamicJsonDocument doc(2048);
     deserializeJson(doc, payload, length);
-
     String event = doc["event"];
     if (event == "phx_reply") {
         Serial.println("Subscription to devices table successful.");
     } else if (event == "postgres_changes") {
-        // Handle both UPDATE and INSERT events
         JsonObject data = doc["payload"]["data"]["record"];
         String eventType = doc["payload"]["data"]["eventType"];
-        
         int gpio = data["gpio"];
         int state = data["state"];
         const char* deviceName = data["name"];
-
         if (eventType == "INSERT") {
             Serial.printf("New device added: %s on GPIO %d\n", deviceName, gpio);
-            // Initialize the new GPIO pin if not already done
-            if (gpio >= 0 && gpio <= 39) { // Basic validation
+            if (gpio >= 0 && gpio <= 39) {
                 initializeGPIO(gpio);
                 Serial.printf("GPIO %d initialized for new device\n", gpio);
             }
         } else if (eventType == "UPDATE") {
             Serial.printf("Device update - GPIO %d, new state: %d", gpio, state);
-            // Check if device name was updated (for rename functionality)
             if (deviceName) {
                 Serial.printf(", device renamed to: %s", deviceName);
             }
             Serial.println();
-
-            // Update GPIO state
             if (gpio >= 0 && gpio <= 39) {
-                // Initialize GPIO if not already done (safety check)
                 if (!initializedPins[gpio]) {
                     initializeGPIO(gpio);
                     Serial.printf("GPIO %d initialized on first use\n", gpio);
                 }
-                
                 digitalWrite(gpio, state == 1 ? HIGH : LOW);
             } else {
                 Serial.printf("Invalid GPIO %d\n", gpio);
@@ -443,7 +421,6 @@ void handleWebSocketMessage(uint8_t * payload, size_t length) {
     }
 }
 
-// Helper function to initialize GPIO pins
 void initializeGPIO(int gpio) {
     if (gpio >= 0 && gpio <= 39 && !initializedPins[gpio]) {
         pinMode(gpio, OUTPUT);
@@ -459,7 +436,6 @@ void sendHeartbeat() {
     doc["event"] = "heartbeat";
     doc["payload"] = JsonObject();
     doc["ref"] = messageRef++;
-    
     String message;
     serializeJson(doc, message);
     webSocket.sendTXT(message);
