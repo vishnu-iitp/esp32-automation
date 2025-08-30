@@ -1119,36 +1119,64 @@ class HomeAutomationApp {
         }
 
         try {
-            const { data, error } = await this.supabase
-                .from('devices')
-                .update({ 
-                    user_id: this.currentUser.id,
-                    updated_at: new Date().toISOString()
-                })
-                .eq('id', deviceId)
-                .select();
-
-            if (error) {
-                throw error;
+            // Get the current user's session to extract the JWT
+            const { data: { session } } = await this.supabase.auth.getSession();
+            
+            if (!session || !session.access_token) {
+                this.showToast('Authentication session expired. Please log in again.', 'error');
+                return;
             }
 
-            if (data && data.length > 0) {
-                const claimedDevice = data[0];
+            // Call the Edge Function to claim the device
+            const response = await fetch(`${SUPABASE_URL}/functions/v1/create-device-jwt`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${session.access_token}`,
+                },
+                body: JSON.stringify({
+                    device_id: deviceId
+                })
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.error || `HTTP error! status: ${response.status}`);
+            }
+
+            if (result.success) {
+                // The device has been successfully claimed
+                // Remove the device from unclaimed list and refresh the UI
+                await this.findUnclaimedDevices(); // Refresh the unclaimed devices list
                 
-                // Add to local devices array
-                this.devices.push(claimedDevice);
-                
-                // Refresh the device grid
-                this.renderDevices();
+                // Refresh the user's device list
+                await this.fetchInitialDevices();
                 
                 // Close the modal and show success message
                 this.closeClaimDeviceModal();
-                this.showToast(`Device "${claimedDevice.name}" claimed successfully!`, 'success');
+                this.showToast(result.message || `Device claimed successfully!`, 'success');
+            } else {
+                throw new Error(result.error || 'Unknown error occurred');
             }
 
         } catch (error) {
             console.error('Error claiming device:', error);
-            this.showToast('Failed to claim device. Please try again.', 'error');
+            
+            let errorMessage = 'Failed to claim device. Please try again.';
+            
+            // Handle specific error cases
+            if (error.message.includes('already claimed')) {
+                errorMessage = 'This device has already been claimed by another user.';
+            } else if (error.message.includes('not found')) {
+                errorMessage = 'Device not found. It may have been removed.';
+            } else if (error.message.includes('Unauthorized') || error.message.includes('401')) {
+                errorMessage = 'Authentication failed. Please log in again.';
+            } else if (error.message) {
+                errorMessage = error.message;
+            }
+            
+            this.showToast(errorMessage, 'error');
         }
     }
 
