@@ -1,14 +1,12 @@
 /*
  * ESP32 Home Automation System with Secure Supabase Integration
- * 
- * Features:
+ * * Features:
  * - Self-provisioning workflow for new devices
  * - Secure JWT-based authentication after claiming
  * - Real-time device control via Supabase WebSocket
  * - Robust EEPROM credential management
  * - Automatic fallback to provisioning mode if credentials are invalid
- * 
- * Author: ESP32 Home Automation Team
+ * * Author: ESP32 Home Automation Team
  * Version: 3.0 (Secure Provisioning System)
  */
 
@@ -19,8 +17,8 @@
 #include <EEPROM.h>
 
 // =================== CONFIGURATION ===================
-const char* WIFI_SSID = "JioFiber-vishnu_4G";
-const char* WIFI_PASSWORD = "aeasap975";
+const char* WIFI_SSID = "Avi";
+const char* WIFI_PASSWORD = "gymratss";
 const char* SUPABASE_PROJECT_ID = "ahmseisassvgxbbccqyd";
 const char* SUPABASE_URL = "https://ahmseisassvgxbbccqyd.supabase.co";
 const char* SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFobXNlaXNhc3N2Z3hiYmNjcXlkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTYzOTgyNDEsImV4cCI6MjA3MTk3NDI0MX0.VR3dkEUvDzkH8s9YXQq3E3XCRSu62ldE1Qs9-DI1CaI";
@@ -74,7 +72,7 @@ void setup() {
     
     // Initialize EEPROM
     EEPROM.begin(EEPROM_SIZE);
-    
+
     // Initialize predefined device pins
     for (int i = 0; i < NUM_PINS; i++) {
         initializeGPIO(DEVICE_PINS[i]);
@@ -117,6 +115,9 @@ void setup() {
             delay(10000);
             ESP.restart();
         }
+    }
+} // <--- FIXED: Added the missing closing brace for setup()
+
 void loop() {
     if (isProvisioned) {
         webSocket.loop();
@@ -126,7 +127,8 @@ void loop() {
             lastHeartbeat = millis();
         }
     } else {
-        // Continue polling if not provisioned yet
+        // This part of the loop will likely not be reached due to ESP.restart()
+        // in setup(), but it's here as a fallback.
         if (pollForCredentials()) {
             Serial.println("Device claimed! Restarting to operational mode...");
             delay(2000);
@@ -182,7 +184,6 @@ bool loadAndValidateCredentials() {
 
 void saveCredentials(const String& jwt, const String& uid, int devId) {
     Serial.println("Saving credentials to EEPROM...");
-    
     // Clear the credential areas first
     for (int i = 0; i < MAX_JWT_SIZE; i++) {
         EEPROM.write(DEVICE_JWT_ADDR + i, 0);
@@ -211,7 +212,6 @@ void saveCredentials(const String& jwt, const String& uid, int devId) {
 
     // Mark credentials as valid
     EEPROM.write(CREDENTIALS_VALID_ADDR, 0xAA);
-    
     // Commit to EEPROM
     EEPROM.commit();
     
@@ -225,9 +225,8 @@ void saveCredentials(const String& jwt, const String& uid, int devId) {
 
 void clearCredentials() {
     Serial.println("Clearing stored credentials...");
-    
-    // Clear all credential areas
-    for (int i = 0; i < EEPROM_SIZE; i++) {
+    // Clear all credential areas by zeroing out the relevant part of EEPROM
+    for (int i = 0; i < CREDENTIALS_VALID_ADDR + 1; i++) {
         EEPROM.write(i, 0);
     }
     EEPROM.commit();
@@ -243,7 +242,6 @@ void clearCredentials() {
 
 bool provisionDevice() {
     Serial.println("Starting device provisioning...");
-    
     String macAddress = getMacAddress();
     String defaultName = "ESP32_" + macAddress.substring(macAddress.length() - 6);
     
@@ -258,13 +256,12 @@ bool provisionDevice() {
     doc["mac_address"] = macAddress;
     doc["name"] = defaultName;
     doc["gpio"] = 23; // Default GPIO for first device
-    doc["state"] = 0;  // Default OFF state
+    doc["state"] = 0; // Default OFF state
     
     String jsonString;
     serializeJson(doc, jsonString);
     
     Serial.printf("Registering device: %s\n", jsonString.c_str());
-    
     int httpResponseCode = http.POST(jsonString);
     
     if (httpResponseCode == 201) {
@@ -299,22 +296,19 @@ bool pollForCredentials() {
     }
     
     String url = String(SUPABASE_URL) + "/rest/v1/devices?id=eq." + String(deviceId) + "&select=user_id,device_jwt";
-    
     http.begin(url);
     http.addHeader("apikey", SUPABASE_ANON_KEY);
     http.addHeader("Authorization", "Bearer " + String(SUPABASE_ANON_KEY));
     
     int httpResponseCode = http.GET();
-    
     if (httpResponseCode == 200) {
         String response = http.getString();
         
         DynamicJsonDocument doc(1024);
         deserializeJson(doc, response);
-        
+
         if (doc.is<JsonArray>() && doc.size() > 0) {
             JsonObject device = doc[0];
-            
             // Check if user_id and device_jwt are populated
             if (!device["user_id"].isNull() && !device["device_jwt"].isNull()) {
                 String receivedUserId = device["user_id"];
@@ -356,7 +350,7 @@ void connectToSupabaseWebSocket() {
         path += "&jwt=" + deviceJwt;
         Serial.println("Connecting with device JWT authentication...");
     } else {
-        Serial.println("Warning: No device JWT available!");
+        Serial.println("Warning: No device JWT available! Cannot connect to WebSocket.");
         return;
     }
     
@@ -386,12 +380,10 @@ void subscribeToDevicesTable() {
     DynamicJsonDocument doc(1024);
     doc["topic"] = "realtime:public:devices";
     doc["event"] = "phx_join";
-    
     // Subscribe to both UPDATE and INSERT events
     doc["payload"]["config"]["postgres_changes"][0]["event"] = "UPDATE";
     doc["payload"]["config"]["postgres_changes"][0]["schema"] = "public";
     doc["payload"]["config"]["postgres_changes"][0]["table"] = "devices";
-    
     doc["payload"]["config"]["postgres_changes"][1]["event"] = "INSERT";
     doc["payload"]["config"]["postgres_changes"][1]["schema"] = "public";
     doc["payload"]["config"]["postgres_changes"][1]["table"] = "devices";
@@ -405,7 +397,7 @@ void subscribeToDevicesTable() {
 }
 
 void handleWebSocketMessage(uint8_t * payload, size_t length) {
-    DynamicJsonDocument doc(1024);
+    DynamicJsonDocument doc(2048); // Increased size for safety
     deserializeJson(doc, payload, length);
 
     String event = doc["event"];
@@ -422,15 +414,13 @@ void handleWebSocketMessage(uint8_t * payload, size_t length) {
 
         if (eventType == "INSERT") {
             Serial.printf("New device added: %s on GPIO %d\n", deviceName, gpio);
-            
             // Initialize the new GPIO pin if not already done
-            if (!initializedPins[gpio] && gpio >= 0 && gpio <= 39) {
+            if (gpio >= 0 && gpio <= 39) { // Basic validation
                 initializeGPIO(gpio);
                 Serial.printf("GPIO %d initialized for new device\n", gpio);
             }
         } else if (eventType == "UPDATE") {
             Serial.printf("Device update - GPIO %d, new state: %d", gpio, state);
-            
             // Check if device name was updated (for rename functionality)
             if (deviceName) {
                 Serial.printf(", device renamed to: %s", deviceName);
@@ -475,73 +465,3 @@ void sendHeartbeat() {
     webSocket.sendTXT(message);
     Serial.println("Heartbeat sent.");
 }
-    doc["payload"]["config"]["postgres_changes"][0]["table"] = "devices";
-    doc["payload"]["config"]["postgres_changes"][0]["filter"] = filter.c_str();
-
-    doc["ref"] = messageRef++;
-
-    String message;
-    serializeJson(doc, message);
-    webSocket.sendTXT(message);
-    Serial.println("Subscribing to devices table for user: " + userId);
-}
-
-void handleWebSocketMessage(uint8_t * payload, size_t length) {
-    DynamicJsonDocument doc(1024);
-    deserializeJson(doc, payload, length);
-
-    String event = doc["event"];
-    if (event == "phx_reply") {
-        String status = doc["payload"]["status"];
-        if (status == "ok") {
-            Serial.println("Subscription to devices table successful.");
-        } else {
-            Serial.println("Subscription failed. Check RLS policies, JWT role, and user ID.");
-        }
-    } else if (event == "postgres_changes") {
-        JsonObject data = doc["payload"]["data"]["record"];
-        String eventType = doc["payload"]["data"]["eventType"];
-
-        int gpio = data["gpio"];
-        int state = data["state"];
-        const char* deviceName = data["name"];
-
-        if (eventType == "INSERT") {
-            Serial.printf("New device added: %s on GPIO %d\n", deviceName, gpio);
-            if (gpio >= 0 && gpio <= 39) initializeGPIO(gpio);
-        } else if (eventType == "UPDATE") {
-            Serial.printf("Device update - GPIO %d, new state: %d", gpio, state);
-            if (deviceName) Serial.printf(", device name: %s", deviceName);
-            Serial.println();
-            if (gpio >= 0 && gpio <= 39) {
-                if (!initializedPins[gpio]) initializeGPIO(gpio);
-                digitalWrite(gpio, state == 1 ? HIGH : LOW);
-            } else {
-                Serial.printf("Invalid GPIO %d\n", gpio);
-            }
-        }
-    }
-}
-
-void initializeGPIO(int gpio) {
-    if (gpio >= 0 && gpio <= 39 && !initializedPins[gpio]) {
-        pinMode(gpio, OUTPUT);
-        digitalWrite(gpio, LOW);
-        initializedPins[gpio] = true;
-        Serial.printf("GPIO %d configured as OUTPUT\n", gpio);
-    }
-}
-
-void sendHeartbeat() {
-    DynamicJsonDocument doc(256);
-    doc["topic"] = "phoenix";
-    doc["event"] = "heartbeat";
-    doc["payload"] = JsonObject();
-    doc["ref"] = messageRef++;
-
-    String message;
-    serializeJson(doc, message);
-    webSocket.sendTXT(message);
-    Serial.println("Heartbeat sent.");
-}
-

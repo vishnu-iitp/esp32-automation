@@ -16,9 +16,9 @@ serve(async (req) => {
 
   try {
     // Get environment variables - using correct spelling
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
-    const jwtSecret = Deno.env.get('SUPABASE_JWT_SECRET')
+    const supabaseUrl = Deno.env.get('SPABASE_URL')
+    const supabaseServiceKey = Deno.env.get('SPABASE_SERVICE_ROLE_KEY')
+    const jwtSecret = Deno.env.get('SPABASE_JWT_SECRET')
 
     if (!supabaseUrl || !supabaseServiceKey || !jwtSecret) {
       console.error('FATAL: Missing one or more required environment variables.');
