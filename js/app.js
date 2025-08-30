@@ -1,7 +1,3 @@
-// Supabase Configuration
-const SUPABASE_URL = 'https://ahmseisassvgxbbccqyd.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFobXNlaXNhc3N2Z3hiYmNjcXlkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTYzOTgyNDEsImV4cCI6MjA3MTk3NDI0MX0.VR3dkEUvDzkH8s9YXQq3E3XCRSu62ldE1Qs9-DI1CaI';
-
 class HomeAutomationApp {
     constructor() {
         this.supabase = null;
@@ -9,107 +5,90 @@ class HomeAutomationApp {
         this.isListening = false;
         this.recognition = null;
         this.isProcessingVoiceCommand = false;
-        this.deferredPrompt = null; // For PWA installation
-        this.currentUser = null;
-        this.hasShownWelcome = false;
         
         this.init();
     }
 
     async init() {
         this.setupEventListeners();
+        this.loadSupabaseConfig();
         await this.initializeSupabase();
+        await this.fetchInitialDevices();
+        this.setupRealtimeSubscriptions();
         this.setupVoiceControl();
-        this.setupPWAInstallation(); // Add PWA setup
-        this.handleURLParameters(); // Handle app shortcuts
-        this.handleOnlineStatus(); // Setup offline/online handling
-        
-        // Initialize authentication state management
-        await this.handleAuthStateChange();
     }
 
     setupEventListeners() {
-        // Authentication event listeners
-        document.getElementById('login-btn').addEventListener('click', () => this.handleLogin());
-        document.getElementById('signup-btn').addEventListener('click', () => this.handleSignUp());
-        document.getElementById('logoutBtn').addEventListener('click', () => this.handleLogout());
-        document.getElementById('show-signup').addEventListener('click', (e) => {
-            e.preventDefault();
-            this.showSignUpForm();
-        });
-        document.getElementById('show-login').addEventListener('click', (e) => {
-            e.preventDefault();
-            this.showLoginForm();
-        });
+        document.getElementById('settingsBtn').addEventListener('click', () => this.openSettings());
+        document.getElementById('closeSettings').addEventListener('click', () => this.closeSettings());
+        document.getElementById('cancelSettings').addEventListener('click', () => this.closeSettings());
+        document.getElementById('saveSettings').addEventListener('click', () => this.saveSettings());
 
-        // Handle Enter key for login form
-        document.getElementById('login-email').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') this.handleLogin();
-        });
-        document.getElementById('login-password').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') this.handleLogin();
-        });
-
-        // Handle Enter key for signup form
-        document.getElementById('signup-confirm').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') this.handleSignUp();
-        });
-
-        // Voice control event listeners
         document.getElementById('voiceBtn').addEventListener('click', () => this.toggleVoiceControl());
         document.getElementById('stopVoiceBtn').addEventListener('click', () => this.stopVoiceControl());
 
-        // Claim Device Modal Event Listeners
-        document.getElementById('addDeviceBtn').addEventListener('click', () => this.openClaimDeviceModal());
-        document.getElementById('closeClaimDevice').addEventListener('click', () => this.closeClaimDeviceModal());
-        document.getElementById('cancelClaimDevice').addEventListener('click', () => this.closeClaimDeviceModal());
+        // Add Device Modal Event Listeners
+        document.getElementById('addDeviceBtn').addEventListener('click', () => this.openAddDeviceModal());
+        document.getElementById('closeAddDevice').addEventListener('click', () => this.closeAddDeviceModal());
+        document.getElementById('cancelAddDevice').addEventListener('click', () => this.closeAddDeviceModal());
+        document.getElementById('saveAddDevice').addEventListener('click', () => this.addDevice());
 
         // Rename Device Modal Event Listeners (will be added when modal is created)
         document.addEventListener('click', (e) => {
-            // Check for edit button click (button or its child elements)
-            const editBtn = e.target.closest('.edit-device-btn');
-            if (editBtn) {
-                const deviceId = editBtn.closest('.device-card').dataset.deviceId;
+            if (e.target.classList.contains('edit-device-btn')) {
+                const deviceId = e.target.closest('.device-card').dataset.deviceId;
                 this.openRenameDeviceModal(deviceId);
-            }
-            
-            // Check for delete button click (button or its child elements)
-            const deleteBtn = e.target.closest('.delete-device-btn');
-            if (deleteBtn) {
-                const deviceId = deleteBtn.closest('.device-card').dataset.deviceId;
-                this.confirmDeleteDevice(deviceId);
             }
         });
 
-        document.getElementById('claimDeviceModal').addEventListener('click', (e) => {
-            if (e.target.classList.contains('modal-overlay')) this.closeClaimDeviceModal();
+        document.getElementById('settingsModal').addEventListener('click', (e) => {
+            if (e.target.classList.contains('modal-overlay')) this.closeSettings();
+        });
+
+        document.getElementById('addDeviceModal').addEventListener('click', (e) => {
+            if (e.target.classList.contains('modal-overlay')) this.closeAddDeviceModal();
         });
     }
 
+    loadSupabaseConfig() {
+        const supabaseUrl = localStorage.getItem('supabaseUrl');
+        const supabaseKey = localStorage.getItem('supabaseKey');
+        
+        if (supabaseUrl && supabaseKey) {
+            document.getElementById('supabaseUrl').value = supabaseUrl;
+            document.getElementById('supabaseKey').value = supabaseKey;
+        }
+    }
+
     async initializeSupabase() {
+        const supabaseUrl = localStorage.getItem('supabaseUrl');
+        const supabaseKey = localStorage.getItem('supabaseKey');
+
+        if (!supabaseUrl || !supabaseKey) {
+            this.updateConnectionStatus('disconnected', 'Please configure Supabase settings');
+            return;
+        }
+
         try {
-            this.supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+            this.supabase = supabase.createClient(supabaseUrl, supabaseKey);
             this.updateConnectionStatus('connected', 'Connected to Supabase');
-            console.log('Supabase initialized successfully');
+            this.showToast('Successfully connected to Supabase!', 'success');
         } catch (error) {
             console.error('Supabase initialization error:', error);
             this.updateConnectionStatus('disconnected', 'Failed to connect to Supabase');
-            this.showToast('Failed to connect to Supabase. Please try again.', 'error');
+            this.showToast('Failed to connect to Supabase. Check your configuration.', 'error');
         }
     }
 
     async fetchInitialDevices() {
-        if (!this.supabase || !this.currentUser) return;
-        const { data, error } = await this.supabase
-            .from('devices')
-            .select('*')
-            .eq('user_id', this.currentUser.id);
+        if (!this.supabase) return;
+        const { data, error } = await this.supabase.from('devices').select('*');
         if (error) {
             console.error('Error fetching devices:', error);
             this.showToast('Could not fetch devices', 'error');
             return;
         }
-        this.devices = data || [];
+        this.devices = data;
         this.renderDevices();
     }
 
@@ -244,9 +223,6 @@ class HomeAutomationApp {
                     <button class="edit-device-btn" title="Rename Device">
                         <span class="edit-icon">✏️</span>
                     </button>
-                    <button class="delete-device-btn" title="Delete Device">
-                        <span class="delete-icon">🗑️</span>
-                    </button>
                     <div class="device-icon">${icons[type] || '⚡️'}</div>
                 </div>
             </div>
@@ -351,13 +327,8 @@ class HomeAutomationApp {
             // Set flag to indicate we're processing a voice command
             this.isProcessingVoiceCommand = true;
             
-            console.log('Processing voice command:', command);
-            console.log('Available devices:', this.devices.map(d => d.name));
-            
             // Use the intelligent NLU system to process the command
             const parsedCommand = this.processIntelligentCommand(command, this.devices);
-            
-            console.log('Parsed command:', parsedCommand);
             
             if (!parsedCommand || !parsedCommand.intent) {
                 this.showToast('Could not understand the command. Please try again.', 'error');
@@ -550,30 +521,7 @@ class HomeAutomationApp {
             };
         }
         
-        // First, try exact device name matches (case-insensitive)
-        const exactMatches = devices.filter(device => {
-            const deviceName = device.name.toLowerCase();
-            const isMatch = command.includes(deviceName);
-            console.log(`Checking exact match for "${device.name}" (${deviceName}) in "${command}": ${isMatch}`);
-            return isMatch;
-        });
-        
-        console.log(`Found ${exactMatches.length} exact matches:`, exactMatches.map(d => d.name));
-        
-        if (exactMatches.length === 1) {
-            return {
-                targets: [exactMatches[0].name],
-                ambiguous: false
-            };
-        } else if (exactMatches.length > 1) {
-            // Multiple exact matches, return all of them
-            return {
-                targets: exactMatches.map(d => d.name),
-                ambiguous: false
-            };
-        }
-        
-        // If no exact matches, try partial matching and scoring
+        // Score each device for relevance
         const deviceScores = devices.map(device => ({
             device: device,
             score: this.calculateDeviceRelevanceScore(device, command, tokens, deviceSynonyms, locationSynonyms)
@@ -622,22 +570,10 @@ class HomeAutomationApp {
             return 100;
         }
         
-        // Check for exact word matches in device name
-        const commandWords = command.split(' ');
-        for (const deviceWord of deviceWords) {
-            if (commandWords.includes(deviceWord)) {
-                score += 50; // High score for exact word match
-            }
-        }
-        
-        // Check for partial matches within words (e.g., "light" in "light2")
-        for (const deviceWord of deviceWords) {
-            for (const commandWord of commandWords) {
-                if (deviceWord.includes(commandWord) || commandWord.includes(deviceWord)) {
-                    if (deviceWord !== commandWord) { // Avoid double scoring exact matches
-                        score += 30; // Good score for partial match
-                    }
-                }
+        // Check each word in the device name
+        for (const word of deviceWords) {
+            if (command.includes(word)) {
+                score += 30;
             }
         }
         
@@ -816,11 +752,7 @@ class HomeAutomationApp {
                 this.devices.find(d => d.name === name)
             ).filter(d => d);
             
-            console.log('Target device names:', targets);
-            console.log('Found target devices:', targetDevices.map(d => d ? d.name : 'NOT FOUND'));
-            
             if (targetDevices.length === 0) {
-                console.log('No devices found for targets:', targets);
                 this.showToast('Device not found.', 'error');
                 this.isProcessingVoiceCommand = false;
                 return;
@@ -843,192 +775,32 @@ class HomeAutomationApp {
         }
     }
 
-    // =================== AUTHENTICATION METHODS ===================
-
-    async handleAuthStateChange() {
-        // Set up the auth state change listener
-        this.supabase.auth.onAuthStateChange((event, session) => {
-            console.log('Auth state changed:', event, session);
-            this.handleAuthSession(session);
-        });
-
-        // Check initial session
-        const { data: { session } } = await this.supabase.auth.getSession();
-        this.handleAuthSession(session);
+    openSettings() {
+        document.getElementById('settingsModal').classList.add('active');
     }
 
-    handleAuthSession(session) {
-        if (session) {
-            // User is logged in
-            this.currentUser = session.user;
-            this.showMainApp();
-            this.fetchInitialDevices();
-            this.setupRealtimeSubscriptions();
-            
-            // Only show welcome message for new logins, not initial page loads
-            if (session.user && !this.hasShownWelcome) {
-                this.showToast(`Welcome, ${session.user.email}!`, 'success');
-                this.hasShownWelcome = true;
-            }
-        } else {
-            // User is not logged in
-            this.currentUser = null;
-            this.showAuthContainer();
-            this.devices = [];
-            this.renderDevices();
-            this.hasShownWelcome = false;
-        }
+    closeSettings() {
+        document.getElementById('settingsModal').classList.remove('active');
     }
 
-    showMainApp() {
-        document.getElementById('auth-container').classList.add('hidden');
-        document.querySelector('.container').classList.remove('hidden');
-        document.getElementById('logoutBtn').style.display = 'flex';
-    }
+    saveSettings() {
+        const supabaseUrl = document.getElementById('supabaseUrl').value.trim();
+        const supabaseKey = document.getElementById('supabaseKey').value.trim();
 
-    showAuthContainer() {
-        document.getElementById('auth-container').classList.remove('hidden');
-        document.querySelector('.container').classList.add('hidden');
-        document.getElementById('logoutBtn').style.display = 'none';
-    }
-
-    showSignUpForm() {
-        document.getElementById('login-form').classList.remove('active');
-        document.getElementById('signup-form').classList.add('active');
-    }
-
-    showLoginForm() {
-        document.getElementById('signup-form').classList.remove('active');
-        document.getElementById('login-form').classList.add('active');
-    }
-
-    async handleLogin() {
-        const email = document.getElementById('login-email').value.trim();
-        const password = document.getElementById('login-password').value;
-        const loginBtn = document.getElementById('login-btn');
-
-        if (!email || !password) {
-            this.showToast('Please fill in all fields', 'error');
+        if (!supabaseUrl || !supabaseKey) {
+            this.showToast('Please fill in all Supabase fields', 'error');
             return;
         }
 
-        // Show loading state
-        const originalText = loginBtn.textContent;
-        loginBtn.textContent = 'Signing In...';
-        loginBtn.disabled = true;
+        localStorage.setItem('supabaseUrl', supabaseUrl);
+        localStorage.setItem('supabaseKey', supabaseKey);
 
-        try {
-            const { data, error } = await this.supabase.auth.signInWithPassword({
-                email: email,
-                password: password
-            });
-
-            if (error) {
-                throw error;
-            }
-
-            // Clear form
-            document.getElementById('login-email').value = '';
-            document.getElementById('login-password').value = '';
-            this.hasShownWelcome = true; // Mark that we should show welcome message
-        } catch (error) {
-            console.error('Login error:', error);
-            let errorMessage = 'Login failed';
-            
-            if (error.message.includes('Invalid login credentials')) {
-                errorMessage = 'Invalid email or password';
-            } else if (error.message.includes('Email not confirmed')) {
-                errorMessage = 'Please check your email and confirm your account';
-            } else if (error.message) {
-                errorMessage = error.message;
-            }
-            
-            this.showToast(errorMessage, 'error');
-        } finally {
-            // Reset button state
-            loginBtn.textContent = originalText;
-            loginBtn.disabled = false;
-        }
-    }
-
-    async handleSignUp() {
-        const email = document.getElementById('signup-email').value.trim();
-        const password = document.getElementById('signup-password').value;
-        const confirmPassword = document.getElementById('signup-confirm').value;
-        const signupBtn = document.getElementById('signup-btn');
-
-        if (!email || !password || !confirmPassword) {
-            this.showToast('Please fill in all fields', 'error');
-            return;
-        }
-
-        if (password !== confirmPassword) {
-            this.showToast('Passwords do not match', 'error');
-            return;
-        }
-
-        if (password.length < 6) {
-            this.showToast('Password must be at least 6 characters', 'error');
-            return;
-        }
-
-        // Show loading state
-        const originalText = signupBtn.textContent;
-        signupBtn.textContent = 'Creating Account...';
-        signupBtn.disabled = true;
-
-        try {
-            const { data, error } = await this.supabase.auth.signUp({
-                email: email,
-                password: password
-            });
-
-            if (error) {
-                throw error;
-            }
-
-            // Clear form and switch to login
-            document.getElementById('signup-email').value = '';
-            document.getElementById('signup-password').value = '';
-            document.getElementById('signup-confirm').value = '';
-            
-            if (data.user && !data.session) {
-                this.showToast('Account created! Please check your email for verification.', 'success');
-                this.showLoginForm();
-            } else {
-                this.showToast('Account created successfully!', 'success');
-            }
-        } catch (error) {
-            console.error('Sign up error:', error);
-            let errorMessage = 'Sign up failed';
-            
-            if (error.message.includes('already registered')) {
-                errorMessage = 'An account with this email already exists';
-            } else if (error.message) {
-                errorMessage = error.message;
-            }
-            
-            this.showToast(errorMessage, 'error');
-        } finally {
-            // Reset button state
-            signupBtn.textContent = originalText;
-            signupBtn.disabled = false;
-        }
-    }
-
-    async handleLogout() {
-        try {
-            const { error } = await this.supabase.auth.signOut();
-            
-            if (error) {
-                throw error;
-            }
-
-            this.showToast('Logged out successfully', 'success');
-        } catch (error) {
-            console.error('Logout error:', error);
-            this.showToast('Logout failed', 'error');
-        }
+        this.closeSettings();
+        this.showToast('Settings saved! Reconnecting...', 'success');
+        
+        setTimeout(() => {
+            this.initializeSupabase();
+        }, 1000);
     }
 
     showToast(message, type = 'success') {
@@ -1043,140 +815,68 @@ class HomeAutomationApp {
 
     // =================== DEVICE MANAGEMENT METHODS ===================
 
-    async openClaimDeviceModal() {
-        document.getElementById('claimDeviceModal').classList.add('active');
-        // Start searching for unclaimed devices
-        await this.findUnclaimedDevices();
+    openAddDeviceModal() {
+        document.getElementById('addDeviceModal').classList.add('active');
+        // Clear form fields
+        document.getElementById('newDeviceName').value = '';
+        document.getElementById('newDeviceGpio').value = '';
+        document.getElementById('newDeviceType').value = 'light';
     }
 
-    closeClaimDeviceModal() {
-        document.getElementById('claimDeviceModal').classList.remove('active');
+    closeAddDeviceModal() {
+        document.getElementById('addDeviceModal').classList.remove('active');
     }
 
-    async findUnclaimedDevices() {
-        const spinner = document.getElementById('claim-spinner');
-        const devicesList = document.getElementById('unclaimed-devices-list');
-        
-        // Show spinner and clear previous results
-        spinner.style.display = 'block';
-        devicesList.innerHTML = '';
+    async addDevice() {
+        const name = document.getElementById('newDeviceName').value.trim();
+        const gpio = parseInt(document.getElementById('newDeviceGpio').value);
+        const type = document.getElementById('newDeviceType').value;
 
-        try {
-            const { data, error } = await this.supabase
-                .from('devices')
-                .select('*')
-                .is('user_id', null);
-
-            if (error) {
-                throw error;
-            }
-
-            // Hide spinner
-            spinner.style.display = 'none';
-
-            if (data && data.length > 0) {
-                this.renderUnclaimedDevicesList(data);
-            } else {
-                devicesList.innerHTML = '<div class="no-devices-message">No new devices found. Make sure your device is powered on and connected to Wi-Fi.</div>';
-            }
-
-        } catch (error) {
-            console.error('Error fetching unclaimed devices:', error);
-            spinner.style.display = 'none';
-            devicesList.innerHTML = '<div class="no-devices-message">Error searching for devices. Please try again.</div>';
-            this.showToast('Failed to search for devices', 'error');
+        // Validation
+        if (!name) {
+            this.showToast('Please enter a device name', 'error');
+            return;
         }
-    }
 
-    renderUnclaimedDevicesList(devices) {
-        const devicesList = document.getElementById('unclaimed-devices-list');
-        
-        const devicesHTML = devices.map(device => `
-            <div class="unclaimed-device-item">
-                <span class="unclaimed-device-name">${device.name}</span>
-                <button class="claim-btn" data-device-id="${device.id}">
-                    <span>🏠</span>
-                    Claim
-                </button>
-            </div>
-        `).join('');
-        
-        devicesList.innerHTML = devicesHTML;
-        
-        // Add event listeners to claim buttons
-        devicesList.querySelectorAll('.claim-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const deviceId = parseInt(e.target.dataset.deviceId || e.target.closest('.claim-btn').dataset.deviceId);
-                this.claimDevice(deviceId);
-            });
-        });
-    }
+        if (!gpio || gpio < 1 || gpio > 39) {
+            this.showToast('Please enter a valid GPIO pin (1-39)', 'error');
+            return;
+        }
 
-    async claimDevice(deviceId) {
-        if (!this.currentUser) {
-            this.showToast('You must be logged in to claim devices', 'error');
+        // Check if GPIO is already in use
+        const existingDevice = this.devices.find(d => d.gpio === gpio);
+        if (existingDevice) {
+            this.showToast(`GPIO ${gpio} is already in use by "${existingDevice.name}"`, 'error');
             return;
         }
 
         try {
-            // Get the current user's session to extract the JWT
-            const { data: { session } } = await this.supabase.auth.getSession();
-            
-            if (!session || !session.access_token) {
-                this.showToast('Authentication session expired. Please log in again.', 'error');
+            const { data, error } = await this.supabase
+                .from('devices')
+                .insert([
+                    {
+                        name: name,
+                        gpio: gpio,
+                        state: 0, // Default to OFF
+                        device_type: type,
+                        //created_at: new Date().toISOString(),
+                        //updated_at: new Date().toISOString()
+                    }
+                ])
+                .select();
+
+            if (error) {
+                console.error('Error adding device:', error);
+                this.showToast('Failed to add device. Please try again.', 'error');
                 return;
             }
 
-            // Call the Edge Function to claim the device
-            const response = await fetch(`${SUPABASE_URL}/functions/v1/create-device-jwt`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${session.access_token}`,
-                },
-                body: JSON.stringify({
-                    device_id: deviceId
-                })
-            });
-
-            const result = await response.json();
-
-            if (!response.ok) {
-                throw new Error(result.error || `HTTP error! status: ${response.status}`);
-            }
-
-            if (result.success) {
-                // The device has been successfully claimed
-                // Remove the device from unclaimed list and refresh the UI
-                await this.findUnclaimedDevices(); // Refresh the unclaimed devices list
-                
-                // Refresh the user's device list
-                await this.fetchInitialDevices();
-                
-                // Close the modal and show success message
-                this.closeClaimDeviceModal();
-                this.showToast(result.message || `Device claimed successfully!`, 'success');
-            } else {
-                throw new Error(result.error || 'Unknown error occurred');
-            }
+            this.closeAddDeviceModal();
+            this.showToast(`Device "${name}" added successfully!`, 'success');
 
         } catch (error) {
-            console.error('Error claiming device:', error);
-            
-            let errorMessage = 'Failed to claim device. Please try again.';
-            
-            // Handle specific error cases
-            if (error.message.includes('already claimed')) {
-                errorMessage = 'This device has already been claimed by another user.';
-            } else if (error.message.includes('not found')) {
-                errorMessage = 'Device not found. It may have been removed.';
-            } else if (error.message.includes('Unauthorized') || error.message.includes('401')) {
-                errorMessage = 'Authentication failed. Please log in again.';
-            } else if (error.message) {
-                errorMessage = error.message;
-            }
-            
-            this.showToast(errorMessage, 'error');
+            console.error('Error adding device:', error);
+            this.showToast('Failed to add device. Please check your connection.', 'error');
         }
     }
 
@@ -1293,289 +993,20 @@ class HomeAutomationApp {
             this.showToast('Failed to rename device. Please check your connection.', 'error');
         }
     }
-
-    // =================== DELETE DEVICE METHODS ===================
-
-    confirmDeleteDevice(deviceId) {
-        const device = this.devices.find(d => d.id == deviceId);
-        if (!device) return;
-
-        // Create confirmation modal if it doesn't exist
-        this.createDeleteConfirmationModal();
-
-        // Set device info in modal
-        document.getElementById('deleteDeviceName').textContent = device.name;
-        document.getElementById('deleteConfirmationModal').dataset.deviceId = deviceId;
-        document.getElementById('deleteConfirmationModal').classList.add('active');
-    }
-
-    createDeleteConfirmationModal() {
-        // Check if modal already exists
-        if (document.getElementById('deleteConfirmationModal')) return;
-
-        const modalHTML = `
-            <div class="modal-overlay" id="deleteConfirmationModal">
-                <div class="modal">
-                    <div class="modal-header">
-                        <h2>Delete Device</h2>
-                        <button class="modal-close" id="closeDeleteConfirmation">&times;</button>
-                    </div>
-                    <div class="modal-body">
-                        <div class="delete-warning">
-                            <div class="warning-icon">⚠️</div>
-                            <p>Are you sure you want to delete <strong id="deleteDeviceName"></strong>?</p>
-                            <p class="warning-text">This action cannot be undone. The device will be permanently removed from your system.</p>
-                        </div>
-                    </div>
-                    <div class="modal-footer">
-                        <button class="btn btn-secondary" id="cancelDeleteDevice">Cancel</button>
-                        <button class="btn btn-danger" id="confirmDeleteDevice">Delete Device</button>
-                    </div>
-                </div>
-            </div>
-        `;
-
-        document.body.insertAdjacentHTML('beforeend', modalHTML);
-
-        // Add event listeners
-        document.getElementById('closeDeleteConfirmation').addEventListener('click', () => this.closeDeleteConfirmationModal());
-        document.getElementById('cancelDeleteDevice').addEventListener('click', () => this.closeDeleteConfirmationModal());
-        document.getElementById('confirmDeleteDevice').addEventListener('click', () => this.deleteDevice());
-        document.getElementById('deleteConfirmationModal').addEventListener('click', (e) => {
-            if (e.target.classList.contains('modal-overlay')) this.closeDeleteConfirmationModal();
-        });
-    }
-
-    closeDeleteConfirmationModal() {
-        const modal = document.getElementById('deleteConfirmationModal');
-        if (modal) {
-            modal.classList.remove('active');
-        }
-    }
-
-    async deleteDevice() {
-        const modal = document.getElementById('deleteConfirmationModal');
-        const deviceId = parseInt(modal.dataset.deviceId);
-
-        const device = this.devices.find(d => d.id === deviceId);
-        if (!device) {
-            this.showToast('Device not found', 'error');
-            return;
-        }
-
-        try {
-            const { error } = await this.supabase
-                .from('devices')
-                .delete()
-                .eq('id', deviceId);
-
-            if (error) {
-                console.error('Error deleting device:', error);
-                this.showToast('Failed to delete device. Please try again.', 'error');
-                return;
-            }
-
-            // Remove device from local array
-            this.devices = this.devices.filter(d => d.id !== deviceId);
-
-            // Remove device card from UI
-            const card = document.querySelector(`[data-device-id="${deviceId}"]`);
-            if (card) {
-                card.remove();
-            }
-
-            this.closeDeleteConfirmationModal();
-            this.showToast(`Device "${device.name}" deleted successfully!`, 'success');
-
-        } catch (error) {
-            console.error('Error deleting device:', error);
-            this.showToast('Failed to delete device. Please check your connection.', 'error');
-        }
-    }
-
-    // =================== PWA INSTALLATION METHODS ===================
-
-    setupPWAInstallation() {
-        // Listen for beforeinstallprompt event
-        window.addEventListener('beforeinstallprompt', (e) => {
-            // Prevent the mini-infobar from appearing on mobile
-            e.preventDefault();
-            // Stash the event so it can be triggered later
-            this.deferredPrompt = e;
-            // Show the install button
-            this.showInstallButton();
-        });
-
-        // Listen for app installed event
-        window.addEventListener('appinstalled', () => {
-            console.log('PWA was installed');
-            this.hideInstallButton();
-            this.showToast('App installed successfully!', 'success');
-            this.deferredPrompt = null;
-        });
-
-        // Check if app is already installed
-        if (window.matchMedia('(display-mode: standalone)').matches) {
-            console.log('PWA is running in standalone mode');
-            this.hideInstallButton();
-        }
-    }
-
-    showInstallButton() {
-        // Create install button if it doesn't exist
-        if (!document.getElementById('installBtn')) {
-            const installBtn = document.createElement('button');
-            installBtn.id = 'installBtn';
-            installBtn.className = 'btn btn-primary install-btn';
-            installBtn.innerHTML = `
-                <span class="install-icon">📱</span>
-                Install App
-            `;
-            installBtn.addEventListener('click', () => this.installPWA());
-            
-            // Add to header actions
-            const headerActions = document.querySelector('.header-actions');
-            headerActions.insertBefore(installBtn, headerActions.firstChild);
-        }
-    }
-
-    hideInstallButton() {
-        const installBtn = document.getElementById('installBtn');
-        if (installBtn) {
-            installBtn.remove();
-        }
-    }
-
-    async installPWA() {
-        if (!this.deferredPrompt) return;
-
-        // Show the prompt
-        this.deferredPrompt.prompt();
-        
-        // Wait for the user to respond to the prompt
-        const { outcome } = await this.deferredPrompt.userChoice;
-        
-        if (outcome === 'accepted') {
-            console.log('User accepted the install prompt');
-        } else {
-            console.log('User dismissed the install prompt');
-        }
-        
-        // Clear the deferredPrompt
-        this.deferredPrompt = null;
-    }
-
-    // =================== URL PARAMETER HANDLING ===================
-
-    handleURLParameters() {
-        const urlParams = new URLSearchParams(window.location.search);
-        const action = urlParams.get('action');
-
-        switch (action) {
-            case 'voice':
-                // Start voice control if accessed via shortcut
-                setTimeout(() => {
-                    if (!this.isListening) {
-                        this.startVoiceControl();
-                    }
-                }, 1000);
-                break;
-            case 'add':
-                // Open claim device modal if accessed via shortcut
-                setTimeout(() => {
-                    this.openClaimDeviceModal();
-                }, 500);
-                break;
-        }
-
-        // Clean up URL after handling
-        if (action) {
-            window.history.replaceState({}, document.title, window.location.pathname);
-        }
-    }
-
-    // =================== OFFLINE SUPPORT ===================
-
-    queueOfflineAction(action) {
-        // Store failed actions for retry when back online
-        const offlineActions = JSON.parse(localStorage.getItem('offlineActions') || '[]');
-        offlineActions.push({
-            ...action,
-            timestamp: Date.now()
-        });
-        localStorage.setItem('offlineActions', JSON.stringify(offlineActions));
-    }
-
-    handleOnlineStatus() {
-        window.addEventListener('online', () => {
-            this.showToast('Connection restored!', 'success');
-            this.updateConnectionStatus('connected', 'Connected to Supabase');
-            // Retry any queued offline actions
-            this.retryOfflineActions();
-        });
-
-        window.addEventListener('offline', () => {
-            this.showToast('You are offline. Changes will be synced when reconnected.', 'info');
-            this.updateConnectionStatus('disconnected', 'Offline - Changes will be synced later');
-        });
-    }
-
-    async retryOfflineActions() {
-        const offlineActions = JSON.parse(localStorage.getItem('offlineActions') || '[]');
-        
-        for (const action of offlineActions) {
-            try {
-                // Retry the action based on its type
-                if (action.type === 'toggleDevice') {
-                    await this.toggleDevice(action.deviceId);
-                } else if (action.type === 'deleteDevice') {
-                    // Handle delete device retry
-                }
-            } catch (error) {
-                console.error('Failed to retry offline action:', error);
-            }
-        }
-        
-        // Clear processed actions
-        localStorage.setItem('offlineActions', '[]');
-    }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
     window.app = new HomeAutomationApp();
 });
 
-// Enhanced service worker registration with update handling
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
         navigator.serviceWorker.register('service-worker.js')
             .then(registration => {
                 console.log('Service Worker registered successfully:', registration.scope);
-                
-                // Check for updates
-                registration.addEventListener('updatefound', () => {
-                    const newWorker = registration.installing;
-                    newWorker.addEventListener('statechange', () => {
-                        if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                            // New content available, notify user
-                            if (window.app) {
-                                window.app.showToast('New app version available! Refresh to update.', 'info');
-                            }
-                        }
-                    });
-                });
             })
             .catch(error => {
                 console.log('Service Worker registration failed:', error);
             });
-            
-        // Listen for service worker messages
-        navigator.serviceWorker.addEventListener('message', event => {
-            if (event.data.type === 'UPDATE_AVAILABLE') {
-                if (window.app) {
-                    window.app.showToast('App update available! Refresh to get the latest version.', 'info');
-                }
-            }
-        });
     });
 }

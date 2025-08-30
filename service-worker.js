@@ -1,17 +1,11 @@
-const CACHE_NAME = 'smart-home-v1.1.0';
+const CACHE_NAME = 'smart-home-v1.0.0';
 const urlsToCache = [
   '/',
   '/index.html',
   '/css/styles.css',
   '/js/app.js',
   '/manifest.json',
-  '/icons/icon-72x72.png',
-  '/icons/icon-96x96.png',
-  '/icons/icon-128x128.png',
-  '/icons/icon-144x144.png',
-  '/icons/icon-152x152.png',
   '/icons/icon-192x192.png',
-  '/icons/icon-384x384.png',
   '/icons/icon-512x512.png',
   'https://unpkg.com/@supabase/supabase-js@2'
 ];
@@ -138,59 +132,8 @@ async function handleBackgroundSync() {
   try {
     // Handle any queued device control actions
     console.log('Background sync triggered');
-    
-    // Get offline actions from IndexedDB or localStorage
-    const offlineActions = JSON.parse(localStorage.getItem('offlineActions') || '[]');
-    
-    for (const action of offlineActions) {
-      try {
-        // Retry the failed network requests
-        const response = await fetch(action.url, action.options);
-        if (response.ok) {
-          console.log('Offline action synced successfully:', action);
-        }
-      } catch (error) {
-        console.error('Failed to sync offline action:', action, error);
-      }
-    }
-    
-    // Clear processed offline actions
-    localStorage.setItem('offlineActions', '[]');
-    
+    // Implementation would depend on your specific offline queue strategy
   } catch (error) {
     console.error('Background sync failed:', error);
   }
 }
-
-// Handle messages from the main thread
-self.addEventListener('message', (event) => {
-  if (event.data && event.data.type === 'SKIP_WAITING') {
-    self.skipWaiting();
-  }
-});
-
-// Update notification
-self.addEventListener('updatefound', () => {
-  const newWorker = self.registration.installing;
-  newWorker.addEventListener('statechange', () => {
-    if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-      // New content available
-      self.registration.showNotification('Update Available', {
-        body: 'A new version of Smart Home Control is available. Refresh to update.',
-        icon: '/icons/icon-192x192.png',
-        tag: 'update-available',
-        requireInteraction: true,
-        actions: [
-          {
-            action: 'update',
-            title: 'Update Now'
-          },
-          {
-            action: 'dismiss',
-            title: 'Later'
-          }
-        ]
-      });
-    }
-  });
-});

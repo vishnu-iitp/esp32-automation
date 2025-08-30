@@ -1,7 +1,7 @@
 {
   "name": "Smart Home Control",
   "short_name": "SmartHome",
-  "description": "Real-time home automation control with ESP32 - Control your lights, fans, and other devices remotely",
+  "description": "Real-time home automation control with ESP32",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#667eea",
@@ -9,7 +9,6 @@
   "orientation": "portrait-primary",
   "scope": "/",
   "lang": "en-US",
-  "prefer_related_applications": false,
   "icons": [
     {
       "src": "icons/icon-72x72.png",
@@ -60,33 +59,7 @@
       "purpose": "maskable any"
     }
   ],
-  "categories": ["productivity", "utilities", "smart-home", "automation"],
-  "shortcuts": [
-    {
-      "name": "Voice Control",
-      "short_name": "Voice",
-      "description": "Start voice control for devices",
-      "url": "/?action=voice",
-      "icons": [
-        {
-          "src": "icons/icon-96x96.png",
-          "sizes": "96x96"
-        }
-      ]
-    },
-    {
-      "name": "Add Device",
-      "short_name": "Add",
-      "description": "Add a new device",
-      "url": "/?action=add",
-      "icons": [
-        {
-          "src": "icons/icon-96x96.png",
-          "sizes": "96x96"
-        }
-      ]
-    }
-  ],
+  "categories": ["productivity", "utilities"],
   "screenshots": [
     {
       "src": "icons/screenshot-wide.png",
