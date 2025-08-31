@@ -20,81 +20,135 @@ class HomeAutomationApp {
     }
 
     setupEventListeners() {
-        // Authentication event listeners
-        document.getElementById('showSignUpForm').addEventListener('click', (e) => {
+        // Authentication event listeners - bind once, use arrow functions to preserve 'this'
+        const showSignUpBtn = document.getElementById('showSignUpForm');
+        const showSignInBtn = document.getElementById('showSignInForm');
+        const signInBtn = document.getElementById('signInBtn');
+        const signUpBtn = document.getElementById('signUpBtn');
+        const logoutBtn = document.getElementById('logoutBtn');
+
+        if (showSignUpBtn) showSignUpBtn.addEventListener('click', (e) => {
             e.preventDefault();
             this.showSignUpForm();
         });
-        document.getElementById('showSignInForm').addEventListener('click', (e) => {
+        if (showSignInBtn) showSignInBtn.addEventListener('click', (e) => {
             e.preventDefault();
             this.showSignInForm();
         });
-        document.getElementById('signInBtn').addEventListener('click', () => this.signIn());
-        document.getElementById('signUpBtn').addEventListener('click', () => this.signUp());
-        document.getElementById('logoutBtn').addEventListener('click', () => this.signOut());
+        if (signInBtn) signInBtn.addEventListener('click', () => this.signIn());
+        if (signUpBtn) signUpBtn.addEventListener('click', () => this.signUp());
+        if (logoutBtn) logoutBtn.addEventListener('click', () => this.signOut());
 
         // Claim Device event listeners
-        document.getElementById('claimDeviceBtn').addEventListener('click', () => this.openClaimDeviceModal());
-        document.getElementById('closeClaimDevice').addEventListener('click', () => this.closeClaimDeviceModal());
-        document.getElementById('cancelClaimDevice').addEventListener('click', () => this.closeClaimDeviceModal());
-        document.getElementById('saveClaimDevice').addEventListener('click', () => this.claimDevice());
+        const claimDeviceBtn = document.getElementById('claimDeviceBtn');
+        const closeClaimDevice = document.getElementById('closeClaimDevice');
+        const cancelClaimDevice = document.getElementById('cancelClaimDevice');
+        const saveClaimDevice = document.getElementById('saveClaimDevice');
+
+        if (claimDeviceBtn) claimDeviceBtn.addEventListener('click', () => this.openClaimDeviceModal());
+        if (closeClaimDevice) closeClaimDevice.addEventListener('click', () => this.closeClaimDeviceModal());
+        if (cancelClaimDevice) cancelClaimDevice.addEventListener('click', () => this.closeClaimDeviceModal());
+        if (saveClaimDevice) saveClaimDevice.addEventListener('click', () => this.claimDevice());
 
         // Settings event listeners
-        document.getElementById('settingsBtn').addEventListener('click', () => this.openSettings());
-        document.getElementById('closeSettings').addEventListener('click', () => this.closeSettings());
-        document.getElementById('cancelSettings').addEventListener('click', () => this.closeSettings());
-        document.getElementById('saveSettings').addEventListener('click', () => this.saveSettings());
+        const settingsBtn = document.getElementById('settingsBtn');
+        const closeSettings = document.getElementById('closeSettings');
+        const cancelSettings = document.getElementById('cancelSettings');
+        const saveSettings = document.getElementById('saveSettings');
 
-        // Voice control event listeners
-        document.getElementById('voiceBtn').addEventListener('click', () => this.toggleVoiceControl());
-        document.getElementById('stopVoiceBtn').addEventListener('click', () => this.stopVoiceControl());
+        if (settingsBtn) settingsBtn.addEventListener('click', () => this.openSettings());
+        if (closeSettings) closeSettings.addEventListener('click', () => this.closeSettings());
+        if (cancelSettings) cancelSettings.addEventListener('click', () => this.closeSettings());
+        if (saveSettings) saveSettings.addEventListener('click', () => this.saveSettings());
+
+        // Voice control event listeners - ensure these are properly bound
+        const voiceBtn = document.getElementById('voiceBtn');
+        const stopVoiceBtn = document.getElementById('stopVoiceBtn');
+        
+        if (voiceBtn) voiceBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            this.toggleVoiceControl();
+        });
+        if (stopVoiceBtn) stopVoiceBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            this.stopVoiceControl();
+        });
 
         // Add Device Modal Event Listeners
-        document.getElementById('addDeviceBtn').addEventListener('click', () => this.openAddDeviceModal());
-        document.getElementById('closeAddDevice').addEventListener('click', () => this.closeAddDeviceModal());
-        document.getElementById('cancelAddDevice').addEventListener('click', () => this.closeAddDeviceModal());
-        document.getElementById('saveAddDevice').addEventListener('click', () => this.addDevice());
+        const addDeviceBtn = document.getElementById('addDeviceBtn');
+        const closeAddDevice = document.getElementById('closeAddDevice');
+        const cancelAddDevice = document.getElementById('cancelAddDevice');
+        const saveAddDevice = document.getElementById('saveAddDevice');
 
-        // Rename Device Modal Event Listeners (will be added when modal is created)
+        if (addDeviceBtn) addDeviceBtn.addEventListener('click', () => this.openAddDeviceModal());
+        if (closeAddDevice) closeAddDevice.addEventListener('click', () => this.closeAddDeviceModal());
+        if (cancelAddDevice) cancelAddDevice.addEventListener('click', () => this.closeAddDeviceModal());
+        if (saveAddDevice) saveAddDevice.addEventListener('click', () => this.addDevice());
+
+        // Device control event listeners - use event delegation for dynamically created elements
         document.addEventListener('click', (e) => {
-            if (e.target.classList.contains('edit-device-btn')) {
-                const deviceId = e.target.closest('.device-card').dataset.deviceId;
-                this.openRenameDeviceModal(deviceId);
+            // Handle device toggle buttons
+            if (e.target.classList.contains('toggle-switch')) {
+                e.preventDefault();
+                e.stopPropagation();
+                const deviceCard = e.target.closest('.device-card');
+                if (deviceCard && deviceCard.dataset.deviceId) {
+                    const deviceId = parseInt(deviceCard.dataset.deviceId);
+                    this.toggleDevice(deviceId);
+                }
+                return;
+            }
+
+            // Handle edit device buttons
+            if (e.target.classList.contains('edit-device-btn') || e.target.closest('.edit-device-btn')) {
+                e.preventDefault();
+                e.stopPropagation();
+                const button = e.target.classList.contains('edit-device-btn') ? e.target : e.target.closest('.edit-device-btn');
+                const deviceCard = button.closest('.device-card');
+                if (deviceCard && deviceCard.dataset.deviceId) {
+                    const deviceId = parseInt(deviceCard.dataset.deviceId);
+                    this.openRenameDeviceModal(deviceId);
+                }
+                return;
             }
         });
 
         // Modal overlay listeners
-        document.getElementById('settingsModal').addEventListener('click', (e) => {
+        const settingsModal = document.getElementById('settingsModal');
+        const addDeviceModal = document.getElementById('addDeviceModal');
+        const claimDeviceModal = document.getElementById('claimDeviceModal');
+
+        if (settingsModal) settingsModal.addEventListener('click', (e) => {
             if (e.target.classList.contains('modal-overlay')) this.closeSettings();
         });
 
-        document.getElementById('addDeviceModal').addEventListener('click', (e) => {
+        if (addDeviceModal) addDeviceModal.addEventListener('click', (e) => {
             if (e.target.classList.contains('modal-overlay')) this.closeAddDeviceModal();
         });
 
-        document.getElementById('claimDeviceModal').addEventListener('click', (e) => {
+        if (claimDeviceModal) claimDeviceModal.addEventListener('click', (e) => {
             if (e.target.classList.contains('modal-overlay')) this.closeClaimDeviceModal();
         });
 
         // Enter key listeners for forms
-        document.getElementById('loginPassword').addEventListener('keypress', (e) => {
+        const loginPassword = document.getElementById('loginPassword');
+        const signupUsername = document.getElementById('signupUsername');
+        const deviceMacAddress = document.getElementById('deviceMacAddress');
+        const newDeviceMacField = document.getElementById('newDeviceMacAddress');
+
+        if (loginPassword) loginPassword.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') this.signIn();
         });
-        document.getElementById('signupUsername').addEventListener('keypress', (e) => {
+        if (signupUsername) signupUsername.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') this.signUp();
         });
-        document.getElementById('deviceMacAddress').addEventListener('keypress', (e) => {
+        if (deviceMacAddress) deviceMacAddress.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') this.claimDevice();
         });
-        
-        // Add event listener for new device MAC address field
-        document.addEventListener('DOMContentLoaded', () => {
-            const newDeviceMacField = document.getElementById('newDeviceMacAddress');
-            if (newDeviceMacField) {
-                newDeviceMacField.addEventListener('keypress', (e) => {
-                    if (e.key === 'Enter') this.addDevice();
-                });
-            }
+        if (newDeviceMacField) newDeviceMacField.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') this.addDevice();
         });
     }
 
@@ -170,6 +224,9 @@ class HomeAutomationApp {
         // Update user info
         document.getElementById('userEmail').textContent = this.user.email;
         
+        // Re-initialize voice control to ensure it works properly
+        this.setupVoiceControl();
+        
         // Fetch user's devices and setup real-time subscriptions
         await this.fetchUserDevices();
         this.setupRealtimeSubscriptions();
@@ -178,6 +235,11 @@ class HomeAutomationApp {
     }
 
     onUserSignedOut() {
+        // Stop voice control if active
+        if (this.isListening) {
+            this.stopVoiceControl();
+        }
+        
         // Show auth, hide main app
         document.getElementById('authSection').style.display = 'block';
         document.getElementById('mainAppSection').style.display = 'none';
@@ -194,6 +256,9 @@ class HomeAutomationApp {
         
         // Clear form fields
         this.clearAuthForms();
+        
+        // Reset user
+        this.user = null;
     }
 
     clearAuthForms() {
@@ -279,8 +344,21 @@ class HomeAutomationApp {
 
     async signOut() {
         try {
+            // Stop voice control if active
+            if (this.isListening) {
+                this.stopVoiceControl();
+            }
+            
+            // Clean up any active subscriptions
+            if (this.realtimeChannel) {
+                this.realtimeChannel.unsubscribe();
+                this.realtimeChannel = null;
+            }
+            
             const { error } = await this.supabase.auth.signOut();
             if (error) throw error;
+            
+            this.showToast('Successfully signed out', 'success');
             
         } catch (error) {
             console.error('Sign out error:', error);
@@ -447,12 +525,24 @@ class HomeAutomationApp {
     }
 
     async toggleDevice(deviceId) {
+        if (!deviceId || !this.supabase || !this.user) {
+            this.showToast('Device or user not found', 'error');
+            return;
+        }
+        
         const device = this.devices.find(d => d.id === deviceId);
-        if (!device) return;
+        if (!device) {
+            this.showToast('Device not found', 'error');
+            return;
+        }
 
         const newState = device.state ? 0 : 1;
         
         try {
+            // Optimistically update UI
+            device.state = newState;
+            this.updateDeviceUI(device);
+            
             const { error } = await this.supabase
                 .from('devices')
                 .update({ 
@@ -462,6 +552,9 @@ class HomeAutomationApp {
                 .eq('id', deviceId);
 
             if (error) {
+                // Revert UI changes on error
+                device.state = device.state ? 0 : 1;
+                this.updateDeviceUI(device);
                 console.error('Error updating device:', error);
                 this.showToast('Failed to update device', 'error');
                 return;
@@ -469,6 +562,9 @@ class HomeAutomationApp {
 
             this.showToast(`${device.name} turned ${newState ? 'ON' : 'OFF'}`, 'success');
         } catch (error) {
+            // Revert UI changes on error
+            device.state = device.state ? 0 : 1;
+            this.updateDeviceUI(device);
             console.error('Unexpected error updating device:', error);
             this.showToast('Network error. Please check your connection.', 'error');
         }
@@ -571,6 +667,12 @@ class HomeAutomationApp {
     }
 
     setupVoiceControl() {
+        // Clean up existing recognition if any
+        if (this.recognition) {
+            this.recognition.abort();
+            this.recognition = null;
+        }
+
         if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
             this.recognition = new SpeechRecognition();
@@ -579,23 +681,49 @@ class HomeAutomationApp {
             this.recognition.lang = 'en-US';
 
             this.recognition.onresult = (event) => {
-                const command = event.results[event.results.length - 1][0].transcript.toLowerCase();
-                console.log('Voice command:', command);
-                this.processVoiceCommand(command);
+                try {
+                    const command = event.results[event.results.length - 1][0].transcript.toLowerCase();
+                    console.log('Voice command:', command);
+                    this.processVoiceCommand(command);
+                } catch (error) {
+                    console.error('Error processing voice command:', error);
+                    this.showToast('Error processing voice command', 'error');
+                }
             };
 
             this.recognition.onerror = (event) => {
                 console.error('Speech recognition error:', event.error);
-                this.showToast('Voice recognition error', 'error');
+                if (event.error !== 'aborted') {
+                    this.showToast('Voice recognition error: ' + event.error, 'error');
+                    // Reset state on error
+                    this.isListening = false;
+                    this.isProcessingVoiceCommand = false;
+                    const voicePanel = document.getElementById('voicePanel');
+                    if (voicePanel) voicePanel.style.display = 'none';
+                }
             };
 
             this.recognition.onend = () => {
-                if (this.isListening) {
-                    this.recognition.start(); // Restart if still listening
+                if (this.isListening && !this.isProcessingVoiceCommand) {
+                    // Restart recognition if we're still supposed to be listening
+                    try {
+                        this.recognition.start();
+                    } catch (error) {
+                        console.error('Error restarting recognition:', error);
+                        this.isListening = false;
+                        const voicePanel = document.getElementById('voicePanel');
+                        if (voicePanel) voicePanel.style.display = 'none';
+                    }
                 }
             };
+
+            this.recognition.onstart = () => {
+                console.log('Voice recognition started');
+            };
+
         } else {
-            document.getElementById('voiceBtn').style.display = 'none';
+            const voiceBtn = document.getElementById('voiceBtn');
+            if (voiceBtn) voiceBtn.style.display = 'none';
             console.warn('Speech recognition not supported');
         }
     }
@@ -609,33 +737,67 @@ class HomeAutomationApp {
     }
 
     startVoiceControl() {
-        if (!this.recognition) return;
+        if (!this.recognition) {
+            this.setupVoiceControl();
+        }
+        
+        if (!this.recognition) {
+            this.showToast('Voice recognition not available', 'error');
+            return;
+        }
 
-        this.isListening = true;
-        this.isProcessingVoiceCommand = false;
-        this.recognition.start();
-        document.getElementById('voicePanel').style.display = 'block';
-        this.showToast('Voice control activated', 'success');
+        try {
+            this.isListening = true;
+            this.isProcessingVoiceCommand = false;
+            this.recognition.start();
+            const voicePanel = document.getElementById('voicePanel');
+            if (voicePanel) voicePanel.style.display = 'block';
+            this.showToast('Voice control activated', 'success');
+        } catch (error) {
+            console.error('Error starting voice control:', error);
+            this.isListening = false;
+            this.showToast('Failed to start voice control', 'error');
+        }
     }
 
     stopVoiceControl() {
         if (!this.recognition) return;
 
-        this.isListening = false;
-        this.isProcessingVoiceCommand = false;
-        this.recognition.stop();
-        document.getElementById('voicePanel').style.display = 'none';
-        this.showToast('Voice control deactivated', 'success');
+        try {
+            this.isListening = false;
+            this.isProcessingVoiceCommand = false;
+            this.recognition.stop();
+            const voicePanel = document.getElementById('voicePanel');
+            if (voicePanel) voicePanel.style.display = 'none';
+            this.showToast('Voice control deactivated', 'success');
+        } catch (error) {
+            console.error('Error stopping voice control:', error);
+            // Force cleanup
+            this.isListening = false;
+            this.isProcessingVoiceCommand = false;
+            const voicePanel = document.getElementById('voicePanel');
+            if (voicePanel) voicePanel.style.display = 'none';
+        }
     }
 
     stopVoiceControlAfterCommand() {
         if (!this.recognition) return;
 
-        this.isListening = false;
-        this.isProcessingVoiceCommand = false;
-        this.recognition.stop();
-        document.getElementById('voicePanel').style.display = 'none';
-        this.showToast('Voice command executed. Tap voice button to give another command.', 'info');
+        try {
+            this.isListening = false;
+            this.isProcessingVoiceCommand = false;
+            this.recognition.stop();
+            const voicePanel = document.getElementById('voicePanel');
+            if (voicePanel) voicePanel.style.display = 'none';
+            this.showToast('Voice command executed. Tap voice button to give another command.', 'info');
+        } catch (error) {
+            console.error('Error stopping voice control after command:', error);
+            // Force cleanup
+            this.isListening = false;
+            this.isProcessingVoiceCommand = false;
+            const voicePanel = document.getElementById('voicePanel');
+            if (voicePanel) voicePanel.style.display = 'none';
+        }
     }
 
     async setDeviceState(deviceId, newState) {
@@ -688,7 +850,7 @@ class HomeAutomationApp {
                     <div class="device-gpio">GPIO ${device.gpio}</div>
                 </div>
                 <div class="device-actions">
-                    <button class="edit-device-btn" title="Rename Device">
+                    <button class="edit-device-btn" title="Rename Device" data-device-id="${device.id}">
                         <span class="edit-icon">✏️</span>
                     </button>
                     <div class="device-icon">${deviceIcon}</div>
@@ -697,7 +859,7 @@ class HomeAutomationApp {
             <div class="device-controls">
                 <div class="device-status">${device.state ? 'ON' : 'OFF'}</div>
                 <button class="toggle-switch ${device.state ? 'active' : ''}" 
-                        onclick="app.toggleDevice(${device.id})"></button>
+                        data-device-id="${device.id}"></button>
             </div>
         `;
 
@@ -773,44 +935,6 @@ class HomeAutomationApp {
             document.getElementById('voiceBtn').style.display = 'none';
             console.warn('Speech recognition not supported');
         }
-    }
-
-    toggleVoiceControl() {
-        if (this.isListening) {
-            this.stopVoiceControl();
-        } else {
-            this.startVoiceControl();
-        }
-    }
-
-    startVoiceControl() {
-        if (!this.recognition) return;
-
-        this.isListening = true;
-        this.isProcessingVoiceCommand = false;
-        this.recognition.start();
-        document.getElementById('voicePanel').style.display = 'block';
-        this.showToast('Voice control activated', 'success');
-    }
-
-    stopVoiceControl() {
-        if (!this.recognition) return;
-
-        this.isListening = false;
-        this.isProcessingVoiceCommand = false;
-        this.recognition.stop();
-        document.getElementById('voicePanel').style.display = 'none';
-        this.showToast('Voice control deactivated', 'success');
-    }
-
-    stopVoiceControlAfterCommand() {
-        if (!this.recognition) return;
-
-        this.isListening = false;
-        this.isProcessingVoiceCommand = false;
-        this.recognition.stop();
-        document.getElementById('voicePanel').style.display = 'none';
-        this.showToast('Voice command executed. Tap voice button to give another command.', 'info');
     }
 
     async processVoiceCommand(command) {
@@ -1430,15 +1554,27 @@ class HomeAutomationApp {
 
     openRenameDeviceModal(deviceId) {
         const device = this.devices.find(d => d.id == deviceId);
-        if (!device) return;
+        if (!device) {
+            this.showToast('Device not found', 'error');
+            return;
+        }
 
         // Create rename modal if it doesn't exist
         this.createRenameModal();
 
         // Populate form with current device name
-        document.getElementById('renameDeviceName').value = device.name;
-        document.getElementById('renameDeviceModal').dataset.deviceId = deviceId;
-        document.getElementById('renameDeviceModal').classList.add('active');
+        const nameInput = document.getElementById('renameDeviceName');
+        const modal = document.getElementById('renameDeviceModal');
+        
+        if (nameInput && modal) {
+            nameInput.value = device.name;
+            modal.dataset.deviceId = deviceId;
+            modal.classList.add('active');
+            // Focus on the input
+            setTimeout(() => nameInput.focus(), 100);
+        } else {
+            this.showToast('Failed to open rename dialog', 'error');
+        }
     }
 
     createRenameModal() {
@@ -1455,7 +1591,7 @@ class HomeAutomationApp {
                     <div class="modal-body">
                         <div class="form-group">
                             <label for="renameDeviceName">Device Name</label>
-                            <input type="text" id="renameDeviceName" placeholder="Enter new device name">
+                            <input type="text" id="renameDeviceName" placeholder="Enter new device name" maxlength="50">
                         </div>
                     </div>
                     <div class="modal-footer">
@@ -1468,13 +1604,32 @@ class HomeAutomationApp {
 
         document.body.insertAdjacentHTML('beforeend', modalHTML);
 
-        // Add event listeners
-        document.getElementById('closeRenameDevice').addEventListener('click', () => this.closeRenameDeviceModal());
-        document.getElementById('cancelRenameDevice').addEventListener('click', () => this.closeRenameDeviceModal());
-        document.getElementById('saveRenameDevice').addEventListener('click', () => this.renameDevice());
-        document.getElementById('renameDeviceModal').addEventListener('click', (e) => {
-            if (e.target.classList.contains('modal-overlay')) this.closeRenameDeviceModal();
-        });
+        // Add event listeners with proper error handling
+        const closeBtn = document.getElementById('closeRenameDevice');
+        const cancelBtn = document.getElementById('cancelRenameDevice');
+        const saveBtn = document.getElementById('saveRenameDevice');
+        const modal = document.getElementById('renameDeviceModal');
+        const nameInput = document.getElementById('renameDeviceName');
+
+        if (closeBtn) closeBtn.addEventListener('click', () => this.closeRenameDeviceModal());
+        if (cancelBtn) cancelBtn.addEventListener('click', () => this.closeRenameDeviceModal());
+        if (saveBtn) saveBtn.addEventListener('click', () => this.renameDevice());
+        
+        if (modal) {
+            modal.addEventListener('click', (e) => {
+                if (e.target.classList.contains('modal-overlay')) this.closeRenameDeviceModal();
+            });
+        }
+        
+        // Add enter key support
+        if (nameInput) {
+            nameInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    this.renameDevice();
+                }
+            });
+        }
     }
 
     closeRenameDeviceModal() {
@@ -1483,16 +1638,30 @@ class HomeAutomationApp {
 
     async renameDevice() {
         const modal = document.getElementById('renameDeviceModal');
+        const nameInput = document.getElementById('renameDeviceName');
+        const saveBtn = document.getElementById('saveRenameDevice');
+        
+        if (!modal || !nameInput || !saveBtn) {
+            this.showToast('Modal elements not found', 'error');
+            return;
+        }
+        
         const deviceId = parseInt(modal.dataset.deviceId);
-        const newName = document.getElementById('renameDeviceName').value.trim();
+        const newName = nameInput.value.trim();
 
         if (!this.validateForm([{ value: newName, name: 'device name' }])) {
+            return;
+        }
+
+        if (newName.length > 50) {
+            this.showToast('Device name must be 50 characters or less', 'error');
             return;
         }
 
         const device = this.devices.find(d => d.id === deviceId);
         if (!device) {
             this.showToast('Device not found', 'error');
+            this.closeRenameDeviceModal();
             return;
         }
 
@@ -1502,6 +1671,10 @@ class HomeAutomationApp {
         }
 
         try {
+            // Disable button during operation
+            saveBtn.disabled = true;
+            saveBtn.textContent = 'Saving...';
+            
             const { error } = await this.supabase
                 .from('devices')
                 .update({ 
@@ -1530,6 +1703,10 @@ class HomeAutomationApp {
         } catch (error) {
             console.error('Error renaming device:', error);
             this.showToast('Failed to rename device. Please check your connection.', 'error');
+        } finally {
+            // Re-enable button
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Save Changes';
         }
     }
 }
