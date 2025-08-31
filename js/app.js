@@ -325,6 +325,8 @@ class HomeAutomationApp {
     }
 
     async onUserSignedIn() {
+        console.log('User signed in, initializing app...');
+        
         // Show main app, hide auth
         document.getElementById('authSection').style.display = 'none';
         document.getElementById('mainAppSection').style.display = 'block';
@@ -335,9 +337,17 @@ class HomeAutomationApp {
         // Re-initialize voice control to ensure it works properly
         this.setupVoiceControl();
         
-        // Fetch user's devices and setup real-time subscriptions
-        await this.fetchUserDevices();
-        this.setupRealtimeSubscriptions();
+        try {
+            // Fetch user's devices and setup real-time subscriptions
+            console.log('Fetching user devices...');
+            await this.fetchUserDevices();
+            console.log('Setting up realtime subscriptions...');
+            this.setupRealtimeSubscriptions();
+            console.log('App initialization complete');
+        } catch (error) {
+            console.error('Error during app initialization:', error);
+            this.showToast('Failed to initialize app properly', 'error');
+        }
         
         this.showToast(`Welcome back, ${this.user.email}!`, 'success');
     }
@@ -549,7 +559,12 @@ class HomeAutomationApp {
     }
 
     async fetchUserDevices() {
-        if (!this.supabase || !this.user) return;
+        if (!this.supabase || !this.user) {
+            console.log('Cannot fetch devices: missing supabase or user');
+            return;
+        }
+        
+        console.log('Fetching devices for user:', this.user.id);
         
         try {
             const { data, error } = await this.supabase
@@ -564,11 +579,15 @@ class HomeAutomationApp {
                 return;
             }
             
+            console.log('Fetched devices:', data);
             this.devices = data || [];
             this.renderDevices();
             
             if (this.devices.length === 0) {
+                console.log('No devices found for user');
                 this.showToast('No devices found. Add a device or claim an existing one.', 'info');
+            } else {
+                console.log(`Loaded ${this.devices.length} devices`);
             }
         } catch (error) {
             console.error('Unexpected error fetching devices:', error);
@@ -577,10 +596,16 @@ class HomeAutomationApp {
     }
 
     setupRealtimeSubscriptions() {
-        if (!this.supabase || !this.user) return;
+        if (!this.supabase || !this.user) {
+            console.log('Cannot setup realtime: missing supabase or user');
+            return;
+        }
+        
+        console.log('Setting up realtime subscriptions for user:', this.user.id);
         
         // Clean up existing subscription if any
         if (this.realtimeChannel) {
+            console.log('Cleaning up existing realtime channel');
             this.realtimeChannel.unsubscribe();
         }
         
@@ -707,24 +732,30 @@ class HomeAutomationApp {
     }
 
     async toggleDevice(deviceId) {
+        console.log('Toggle device called with ID:', deviceId);
+        
         if (!deviceId || !this.supabase || !this.user) {
+            console.log('Toggle device failed: missing deviceId, supabase, or user');
             this.showToast('Device or user not found', 'error');
             return;
         }
         
         const device = this.devices.find(d => d.id === deviceId);
         if (!device) {
+            console.log('Device not found in local devices array');
             this.showToast('Device not found', 'error');
             return;
         }
 
         const newState = device.state ? 0 : 1;
+        console.log(`Toggling device ${device.name} from ${device.state} to ${newState}`);
         
         try {
             // Optimistically update UI
             device.state = newState;
             this.updateDeviceUI(device);
             
+            console.log('Updating device in database...');
             const { error } = await this.supabase
                 .from('devices')
                 .update({ 
@@ -734,20 +765,21 @@ class HomeAutomationApp {
                 .eq('id', deviceId);
 
             if (error) {
+                console.error('Database update failed:', error);
                 // Revert UI changes on error
                 device.state = device.state ? 0 : 1;
                 this.updateDeviceUI(device);
-                console.error('Error updating device:', error);
                 this.showToast('Failed to update device', 'error');
                 return;
             }
 
+            console.log('Device updated successfully in database');
             this.showToast(`${device.name} turned ${newState ? 'ON' : 'OFF'}`, 'success');
         } catch (error) {
+            console.error('Unexpected error updating device:', error);
             // Revert UI changes on error
             device.state = device.state ? 0 : 1;
             this.updateDeviceUI(device);
-            console.error('Unexpected error updating device:', error);
             this.showToast('Network error. Please check your connection.', 'error');
         }
     }
@@ -778,13 +810,23 @@ class HomeAutomationApp {
     }
     
     renderDevices() {
+        console.log('Rendering devices, count:', this.devices.length);
+        
         const grid = document.getElementById('deviceGrid');
+        if (!grid) {
+            console.error('Device grid element not found!');
+            return;
+        }
+        
         grid.innerHTML = '';
 
         this.devices.forEach(device => {
+            console.log('Creating card for device:', device.name, 'ID:', device.id);
             const deviceCard = this.createDeviceCard(device);
             grid.appendChild(deviceCard);
         });
+        
+        console.log('Device rendering complete');
     }
 
     createDeviceCard(device) {
@@ -831,8 +873,13 @@ class HomeAutomationApp {
     }
     
     updateDeviceUI(device) {
+        console.log('Updating UI for device:', device.id, 'state:', device.state);
+        
         const card = document.querySelector(`[data-device-id="${device.id}"]`);
-        if (!card) return;
+        if (!card) {
+            console.log('Device card not found for device ID:', device.id);
+            return;
+        }
 
         const toggle = card.querySelector('.toggle-switch');
         const status = card.querySelector('.device-status');
@@ -841,10 +888,12 @@ class HomeAutomationApp {
             card.classList.add('device-on');
             toggle.classList.add('active');
             status.textContent = 'ON';
+            console.log('Device UI updated to ON state');
         } else {
             card.classList.remove('device-on');
             toggle.classList.remove('active');
             status.textContent = 'OFF';
+            console.log('Device UI updated to OFF state');
         }
     }
 
@@ -1007,88 +1056,6 @@ class HomeAutomationApp {
         statusText.textContent = message;
     }
     
-    renderDevices() {
-        const grid = document.getElementById('deviceGrid');
-        grid.innerHTML = '';
-
-        this.devices.forEach(device => {
-            const deviceCard = this.createDeviceCard(device);
-            grid.appendChild(deviceCard);
-        });
-    }
-
-    createDeviceCard(device) {
-        const card = document.createElement('div');
-        card.className = `device-card ${device.state ? 'device-on' : ''}`;
-        card.dataset.deviceId = device.id;
-
-        const deviceType = this.getDeviceType(device.name);
-        const deviceIcon = this.getDeviceIcon(deviceType);
-
-        card.innerHTML = `
-            <div class="device-header">
-                <div class="device-info">
-                    <h3 class="device-name">${device.name}</h3>
-                    <div class="device-gpio">GPIO ${device.gpio}</div>
-                </div>
-                <div class="device-actions">
-                    <button class="edit-device-btn" title="Rename Device" data-device-id="${device.id}">
-                        <span class="edit-icon">✏️</span>
-                    </button>
-                    <div class="device-icon">${deviceIcon}</div>
-                </div>
-            </div>
-            <div class="device-controls">
-                <div class="device-status">${device.state ? 'ON' : 'OFF'}</div>
-                <button class="toggle-switch ${device.state ? 'active' : ''}" 
-                        data-device-id="${device.id}"></button>
-            </div>
-        `;
-
-        return card;
-    }
-
-    getDeviceType(deviceName) {
-        const name = deviceName.toLowerCase();
-        if (name.includes('light')) return 'light';
-        if (name.includes('fan')) return 'fan';
-        if (name.includes('outlet')) return 'outlet';
-        if (name.includes('motor')) return 'motor';
-        if (name.includes('heater')) return 'heater';
-        if (name.includes('cooler')) return 'cooler';
-        return 'outlet';
-    }
-
-    getDeviceIcon(type) {
-        const icons = {
-            light: '💡',
-            fan: '🌀',
-            outlet: '🔌',
-            motor: '⚙️',
-            heater: '🔥',
-            cooler: '❄️',
-        };
-        return icons[type] || '⚡️';
-    }
-    
-    updateDeviceUI(device) {
-        const card = document.querySelector(`[data-device-id="${device.id}"]`);
-        if (!card) return;
-
-        const toggle = card.querySelector('.toggle-switch');
-        const status = card.querySelector('.device-status');
-
-        if (device.state) {
-            card.classList.add('device-on');
-            toggle.classList.add('active');
-            status.textContent = 'ON';
-        } else {
-            card.classList.remove('device-on');
-            toggle.classList.remove('active');
-            status.textContent = 'OFF';
-        }
-    }
-
     setupVoiceControl() {
         if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
