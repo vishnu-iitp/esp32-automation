@@ -7,11 +7,26 @@
     <link rel="stylesheet" href="css/styles.css?v=1.0.1">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#1e3a8a">
+    
+    <!-- Cache control -->
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
+    
+    <!-- Security and compatibility headers for better session handling -->
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="referrer" content="strict-origin-when-cross-origin">
+    
+    <!-- Icons -->
     <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192x192.png">
     <link rel="apple-touch-icon" href="icons/icon-192x192.png">
+    
+    <!-- Debug info for troubleshooting -->
+    <script>
+        console.log('Page loaded, User Agent:', navigator.userAgent);
+        console.log('Cookies enabled:', navigator.cookieEnabled);
+        console.log('Local storage available:', typeof(Storage) !== "undefined");
+    </script>
 </head>
 <body>
     <div class="container">

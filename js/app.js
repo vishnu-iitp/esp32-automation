@@ -17,6 +17,70 @@ class HomeAutomationApp {
         await this.initializeSupabase();
         await this.checkAuthState();
         this.setupVoiceControl();
+        this.startSessionMonitoring();
+    }
+
+    startSessionMonitoring() {
+        // Check session validity every 30 seconds to handle browser-specific issues
+        setInterval(async () => {
+            if (this.user && this.supabase) {
+                try {
+                    const { data: { session }, error } = await this.supabase.auth.getSession();
+                    if (error || !session) {
+                        console.log('Session lost, signing out user');
+                        this.user = null;
+                        this.onUserSignedOut();
+                    }
+                } catch (error) {
+                    console.warn('Session check failed:', error);
+                }
+            }
+        }, 30000); // Check every 30 seconds
+    }
+
+    getBrowserInfo() {
+        const ua = navigator.userAgent;
+        const isChrome = /Chrome/.test(ua) && !/Edg/.test(ua);
+        const isBrave = navigator.brave !== undefined;
+        const isEdge = /Edg/.test(ua);
+        const isFirefox = /Firefox/.test(ua);
+        
+        return {
+            isChrome: isChrome && !isBrave,
+            isBrave,
+            isEdge,
+            isFirefox,
+            needsSpecialHandling: (isChrome && !isBrave) || isBrave,
+            userAgent: ua
+        };
+    }
+
+    // Custom storage adapter to handle browser-specific issues
+    createCustomStorage() {
+        return {
+            getItem: (key) => {
+                try {
+                    return localStorage.getItem(key);
+                } catch (error) {
+                    console.warn('LocalStorage getItem failed:', error);
+                    return null;
+                }
+            },
+            setItem: (key, value) => {
+                try {
+                    localStorage.setItem(key, value);
+                } catch (error) {
+                    console.warn('LocalStorage setItem failed:', error);
+                }
+            },
+            removeItem: (key) => {
+                try {
+                    localStorage.removeItem(key);
+                } catch (error) {
+                    console.warn('LocalStorage removeItem failed:', error);
+                }
+            }
+        };
     }
 
     setupEventListeners() {
@@ -181,8 +245,29 @@ class HomeAutomationApp {
             return;
         }
 
+        // Log browser information for debugging
+        const browserInfo = this.getBrowserInfo();
+        console.log('Browser info:', browserInfo);
+
         try {
-            this.supabase = supabase.createClient(supabaseUrl, supabaseKey);
+            // Configure Supabase with proper options for browser compatibility
+            const customStorage = this.createCustomStorage();
+            
+            this.supabase = supabase.createClient(supabaseUrl, supabaseKey, {
+                auth: {
+                    autoRefreshToken: true,
+                    persistSession: true,
+                    detectSessionInUrl: true,
+                    storage: customStorage,
+                    storageKey: 'supabase.auth.token',
+                    flowType: 'implicit'
+                },
+                global: {
+                    headers: {
+                        'X-Client-Info': 'supabase-js-web'
+                    }
+                }
+            });
             this.updateConnectionStatus('connected', 'Connected to Supabase');
             this.showToast('Successfully connected to Supabase!', 'success');
         } catch (error) {
@@ -195,25 +280,48 @@ class HomeAutomationApp {
     async checkAuthState() {
         if (!this.supabase) return;
 
-        const { data: { session } } = await this.supabase.auth.getSession();
-        
-        if (session?.user) {
-            this.user = session.user;
-            await this.onUserSignedIn();
-        } else {
-            this.onUserSignedOut();
-        }
-
-        // Listen for auth changes
-        this.supabase.auth.onAuthStateChange(async (event, session) => {
+        try {
+            // Get current session with proper error handling
+            const { data: { session }, error } = await this.supabase.auth.getSession();
+            
+            if (error) {
+                console.warn('Error getting session:', error);
+                // Clear potentially corrupted session data
+                localStorage.removeItem('supabase.auth.token');
+                this.onUserSignedOut();
+                return;
+            }
+            
             if (session?.user) {
                 this.user = session.user;
                 await this.onUserSignedIn();
             } else {
-                this.user = null;
                 this.onUserSignedOut();
             }
-        });
+
+            // Listen for auth changes with better error handling
+            this.supabase.auth.onAuthStateChange(async (event, session) => {
+                console.log('Auth state change:', event, session?.user?.email || 'No user');
+                
+                try {
+                    if (session?.user) {
+                        this.user = session.user;
+                        await this.onUserSignedIn();
+                    } else {
+                        this.user = null;
+                        this.onUserSignedOut();
+                    }
+                } catch (error) {
+                    console.error('Error handling auth state change:', error);
+                    // Force sign out on error
+                    this.user = null;
+                    this.onUserSignedOut();
+                }
+            });
+        } catch (error) {
+            console.error('Error in checkAuthState:', error);
+            this.onUserSignedOut();
+        }
     }
 
     async onUserSignedIn() {
@@ -343,6 +451,9 @@ class HomeAutomationApp {
     }
 
     async signOut() {
+        const browserInfo = this.getBrowserInfo();
+        console.log('Sign out initiated for browser:', browserInfo);
+        
         try {
             // Stop voice control if active
             if (this.isListening) {
@@ -355,14 +466,85 @@ class HomeAutomationApp {
                 this.realtimeChannel = null;
             }
             
-            const { error } = await this.supabase.auth.signOut();
-            if (error) throw error;
+            // Check if we have a valid session before attempting to sign out
+            console.log('Checking current session...');
+            const { data: { session }, error: sessionError } = await this.supabase.auth.getSession();
+            
+            if (sessionError) {
+                console.warn('Error getting session:', sessionError);
+            }
+            
+            if (session) {
+                console.log('Valid session found, attempting sign out...');
+                // Attempt global sign out first
+                const { error } = await this.supabase.auth.signOut({ scope: 'global' });
+                if (error) {
+                    console.warn('Global sign out failed, attempting local sign out:', error);
+                    // If global sign out fails, try local sign out
+                    const { error: localError } = await this.supabase.auth.signOut({ scope: 'local' });
+                    if (localError) throw localError;
+                }
+                console.log('Sign out successful');
+            } else {
+                // No active session, perform local cleanup
+                console.log('No active session found, performing local cleanup');
+                await this.supabase.auth.signOut({ scope: 'local' });
+            }
+            
+            // Force clear local storage as backup
+            console.log('Clearing local storage...');
+            localStorage.removeItem('supabase.auth.token');
+            
+            // Manually trigger sign out state
+            this.user = null;
+            this.onUserSignedOut();
             
             this.showToast('Successfully signed out', 'success');
             
         } catch (error) {
             console.error('Sign out error:', error);
-            this.showToast('Failed to sign out', 'error');
+            console.error('Error details:', {
+                name: error.name,
+                message: error.message,
+                stack: error.stack
+            });
+            
+            // Even if sign out fails on server, clear local session
+            try {
+                console.log('Performing emergency local cleanup...');
+                localStorage.removeItem('supabase.auth.token');
+                this.user = null;
+                this.onUserSignedOut();
+                this.showToast('Signed out locally (server sign out failed)', 'warning');
+            } catch (localError) {
+                console.error('Local cleanup error:', localError);
+                this.showToast('Failed to sign out completely. Please refresh the page.', 'error');
+            }
+        }
+    }
+
+    async refreshSession() {
+        if (!this.supabase) return false;
+        
+        try {
+            console.log('Attempting to refresh session...');
+            const { data, error } = await this.supabase.auth.refreshSession();
+            
+            if (error) {
+                console.error('Session refresh failed:', error);
+                return false;
+            }
+            
+            if (data.session) {
+                console.log('Session refreshed successfully');
+                this.user = data.session.user;
+                return true;
+            }
+            
+            return false;
+        } catch (error) {
+            console.error('Error refreshing session:', error);
+            return false;
         }
     }
 
@@ -1709,10 +1891,72 @@ class HomeAutomationApp {
             saveBtn.textContent = 'Save Changes';
         }
     }
+
+    // Debug method to help diagnose authentication issues
+    async debugAuth() {
+        console.log('=== AUTHENTICATION DEBUG INFO ===');
+        
+        const browserInfo = this.getBrowserInfo();
+        console.log('Browser Info:', browserInfo);
+        
+        // Check localStorage
+        const authToken = localStorage.getItem('supabase.auth.token');
+        console.log('Auth token in localStorage:', authToken ? 'Present' : 'Not found');
+        
+        if (authToken) {
+            try {
+                const parsed = JSON.parse(authToken);
+                console.log('Token structure:', {
+                    hasAccessToken: !!parsed.access_token,
+                    hasRefreshToken: !!parsed.refresh_token,
+                    expiresAt: parsed.expires_at,
+                    currentTime: Math.floor(Date.now() / 1000),
+                    isExpired: parsed.expires_at < Math.floor(Date.now() / 1000)
+                });
+            } catch (e) {
+                console.log('Error parsing auth token:', e);
+            }
+        }
+        
+        // Check current session
+        if (this.supabase) {
+            try {
+                const { data: { session }, error } = await this.supabase.auth.getSession();
+                console.log('Current session from Supabase:', session ? 'Valid' : 'None');
+                if (error) console.log('Session error:', error);
+                if (session) {
+                    console.log('Session details:', {
+                        userId: session.user?.id,
+                        email: session.user?.email,
+                        expiresAt: session.expires_at,
+                        currentTime: Math.floor(Date.now() / 1000),
+                        isExpired: session.expires_at < Math.floor(Date.now() / 1000)
+                    });
+                }
+            } catch (error) {
+                console.log('Error getting session:', error);
+            }
+        } else {
+            console.log('Supabase client not initialized');
+        }
+        
+        console.log('App user state:', this.user ? 'Logged in' : 'Not logged in');
+        console.log('=== END DEBUG INFO ===');
+        
+        return {
+            browser: browserInfo,
+            hasToken: !!authToken,
+            hasSession: !!(await this.supabase?.auth.getSession())?.data?.session,
+            userState: !!this.user
+        };
+    }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
     window.app = new HomeAutomationApp();
+    
+    // Make debug function available globally
+    window.debugAuth = () => window.app.debugAuth();
 });
 
 if ('serviceWorker' in navigator) {
