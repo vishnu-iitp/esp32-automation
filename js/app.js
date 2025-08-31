@@ -301,8 +301,6 @@ class HomeAutomationApp {
 
             // Listen for auth changes with better error handling
             this.supabase.auth.onAuthStateChange(async (event, session) => {
-                console.log('Auth state change:', event, session?.user?.email || 'No user');
-                
                 try {
                     if (session?.user) {
                         this.user = session.user;
