@@ -298,7 +298,7 @@ class HomeAutomationApp {
     async initializeSupabase() {
         // Hardcoded Supabase configuration
         const supabaseUrl = 'https://ahmseisassvgxbbccqyd.supabase.co';
-        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxkZ3JneHVvbW1pb2V3YnNienZ3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTM4NzM5NTUsImV4cCI6MjA2OTQ0OTk1NX0.Zw0LbV1vKZi2RSIq0sU1q5-YwITCX0xgpjUDiOZ96no';
+        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFobXNlaXNhc3N2Z3hiYmNjcXlkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTYzOTgyNDEsImV4cCI6MjA3MTk3NDI0MX0.VR3dkEUvDzkH8s9YXQq3E3XCRSu62ldE1Qs9-DI1CaI';
 
         // Log browser information for debugging
         const browserInfo = this.getBrowserInfo();
