@@ -7,6 +7,7 @@ class HomeAutomationApp {
         this.recognition = null;
         this.isProcessingVoiceCommand = false;
         this.realtimeChannel = null; // Track the realtime channel for cleanup
+        this.isSignedIn = false; // Track sign-in state to prevent duplicate initialization
         
         this.init();
     }
@@ -21,21 +22,27 @@ class HomeAutomationApp {
     }
 
     startSessionMonitoring() {
-        // Check session validity every 30 seconds to handle browser-specific issues
+        // Check session validity every 60 seconds to handle browser-specific issues
         setInterval(async () => {
-            if (this.user && this.supabase) {
+            if (this.user && this.supabase && this.isSignedIn) {
                 try {
                     const { data: { session }, error } = await this.supabase.auth.getSession();
-                    if (error || !session) {
-                        console.log('Session lost, signing out user');
+                    // Only sign out if there's a clear auth error, not network issues
+                    if (error && error.message && (error.message.includes('Invalid') || error.message.includes('expired'))) {
+                        console.log('Session expired, signing out user');
+                        this.user = null;
+                        this.onUserSignedOut();
+                    } else if (!session && !error) {
+                        console.log('No session found, signing out user');
                         this.user = null;
                         this.onUserSignedOut();
                     }
                 } catch (error) {
                     console.warn('Session check failed:', error);
+                    // Don't sign out on network errors
                 }
             }
-        }, 30000); // Check every 30 seconds
+        }, 60000); // Check every 60 seconds
     }
 
     getBrowserInfo() {
@@ -286,8 +293,10 @@ class HomeAutomationApp {
             
             if (error) {
                 console.warn('Error getting session:', error);
-                // Clear potentially corrupted session data
-                localStorage.removeItem('supabase.auth.token');
+                // Only clear session data if it's an auth-related error, not network issues
+                if (error.message && (error.message.includes('Invalid') || error.message.includes('expired'))) {
+                    localStorage.removeItem('supabase.auth.token');
+                }
                 this.onUserSignedOut();
                 return;
             }
@@ -302,13 +311,14 @@ class HomeAutomationApp {
             // Listen for auth changes with better error handling
             this.supabase.auth.onAuthStateChange(async (event, session) => {
                 try {
-                    if (session?.user) {
+                    if (event === 'SIGNED_IN' && session?.user) {
                         this.user = session.user;
                         await this.onUserSignedIn();
-                    } else {
+                    } else if (event === 'SIGNED_OUT' || !session) {
                         this.user = null;
                         this.onUserSignedOut();
                     }
+                    // Ignore other events like INITIAL_SESSION to prevent duplicate initialization
                 } catch (error) {
                     console.error('Error handling auth state change:', error);
                     // Force sign out on error
@@ -323,6 +333,13 @@ class HomeAutomationApp {
     }
 
     async onUserSignedIn() {
+        // Prevent duplicate initialization
+        if (this.isSignedIn) {
+            return;
+        }
+        
+        this.isSignedIn = true;
+        
         // Show main app, hide auth
         document.getElementById('authSection').style.display = 'none';
         document.getElementById('mainAppSection').style.display = 'block';
@@ -341,6 +358,9 @@ class HomeAutomationApp {
     }
 
     onUserSignedOut() {
+        // Reset sign-in state
+        this.isSignedIn = false;
+        
         // Stop voice control if active
         if (this.isListening) {
             this.stopVoiceControl();
