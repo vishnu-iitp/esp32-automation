@@ -102,10 +102,6 @@
                             <span class="claim-icon">📱</span>
                             Claim Device
                         </button>
-                        <button class="btn btn-secondary" id="settingsBtn">
-                            <span class="settings-icon">⚙️</span>
-                            Settings
-                        </button>
                         <button class="btn btn-danger" id="logoutBtn">
                             <span class="logout-icon">🚪</span>
                             Logout
@@ -147,58 +143,6 @@
             </button>
         </div>
         </div> <!-- End of mainAppSection -->
-    </div>
-
-    <!-- Settings Modal -->
-    <div class="modal-overlay" id="settingsModal">
-        <div class="modal">
-            <div class="modal-header">
-                <h2>Settings</h2>
-                <button class="modal-close" id="closeSettings">&times;</button>
-            </div>
-            <div class="modal-body">
-                <div class="settings-section">
-                    <h3>Supabase Configuration</h3>
-                    <div class="form-group">
-                        <label for="supabaseUrl">Supabase Project URL</label>
-                        <input type="url" id="supabaseUrl" placeholder="https://your-project.supabase.co">
-                        <small>Your Supabase project URL from the dashboard</small>
-                    </div>
-                    <div class="form-group">
-                        <label for="supabaseKey">Supabase Anon Key</label>
-                        <input type="password" id="supabaseKey" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...">
-                        <small>Your Supabase anonymous public key</small>
-                    </div>
-                </div>
-                
-                <div class="settings-section">
-                    <h3>Device Management</h3>
-                    <div class="form-group">
-                        <label for="deviceName">Device Name</label>
-                        <input type="text" id="deviceName" placeholder="Living Room Light">
-                    </div>
-                    <div class="form-group">
-                        <label for="deviceGpio">GPIO Pin</label>
-                        <input type="number" id="deviceGpio" placeholder="23" min="1" max="39">
-                    </div>
-                    <div class="form-group">
-                        <label for="deviceType">Device Type</label>
-                        <select id="deviceType">
-                            <option value="light">💡 Light</option>
-                            <option value="fan">🌀 Fan</option>
-                            <option value="outlet">🔌 Outlet</option>
-                            <option value="motor">⚙️ Motor</option>
-                            <option value="heater">🔥 Heater</option>
-                            <option value="cooler">❄️ Cooler</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" id="cancelSettings">Cancel</button>
-                <button class="btn btn-primary" id="saveSettings">Save Settings</button>
-            </div>
-        </div>
     </div>
 
     <!-- Add Device Modal -->

@@ -194,17 +194,6 @@ class HomeAutomationApp {
         if (cancelClaimDevice) cancelClaimDevice.addEventListener('click', () => this.closeClaimDeviceModal());
         if (saveClaimDevice) saveClaimDevice.addEventListener('click', () => this.claimDevice());
 
-        // Settings event listeners
-        const settingsBtn = document.getElementById('settingsBtn');
-        const closeSettings = document.getElementById('closeSettings');
-        const cancelSettings = document.getElementById('cancelSettings');
-        const saveSettings = document.getElementById('saveSettings');
-
-        if (settingsBtn) settingsBtn.addEventListener('click', () => this.openSettings());
-        if (closeSettings) closeSettings.addEventListener('click', () => this.closeSettings());
-        if (cancelSettings) cancelSettings.addEventListener('click', () => this.closeSettings());
-        if (saveSettings) saveSettings.addEventListener('click', () => this.saveSettings());
-
         // Voice control event listeners - ensure these are properly bound
         const voiceBtn = document.getElementById('voiceBtn');
         const stopVoiceBtn = document.getElementById('stopVoiceBtn');
@@ -260,13 +249,8 @@ class HomeAutomationApp {
         });
 
         // Modal overlay listeners
-        const settingsModal = document.getElementById('settingsModal');
         const addDeviceModal = document.getElementById('addDeviceModal');
         const claimDeviceModal = document.getElementById('claimDeviceModal');
-
-        if (settingsModal) settingsModal.addEventListener('click', (e) => {
-            if (e.target.classList.contains('modal-overlay')) this.closeSettings();
-        });
 
         if (addDeviceModal) addDeviceModal.addEventListener('click', (e) => {
             if (e.target.classList.contains('modal-overlay')) this.closeAddDeviceModal();
@@ -307,23 +291,14 @@ class HomeAutomationApp {
     }
 
     loadSupabaseConfig() {
-        const supabaseUrl = localStorage.getItem('supabaseUrl');
-        const supabaseKey = localStorage.getItem('supabaseKey');
-        
-        if (supabaseUrl && supabaseKey) {
-            document.getElementById('supabaseUrl').value = supabaseUrl;
-            document.getElementById('supabaseKey').value = supabaseKey;
-        }
+        // Hardcoded Supabase configuration - no user configuration needed
+        // Note: These values are now hardcoded and cannot be changed through settings
     }
 
     async initializeSupabase() {
-        const supabaseUrl = localStorage.getItem('supabaseUrl');
-        const supabaseKey = localStorage.getItem('supabaseKey');
-
-        if (!supabaseUrl || !supabaseKey) {
-            this.updateConnectionStatus('disconnected', 'Please configure Supabase settings first');
-            return;
-        }
+        // Hardcoded Supabase configuration
+        const supabaseUrl = 'https://ahmseisassvgxbbccqyd.supabase.co';
+        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxkZ3JneHVvbW1pb2V3YnNienZ3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTM4NzM5NTUsImV4cCI6MjA2OTQ0OTk1NX0.Zw0LbV1vKZi2RSIq0sU1q5-YwITCX0xgpjUDiOZ96no';
 
         // Log browser information for debugging
         const browserInfo = this.getBrowserInfo();
@@ -429,7 +404,7 @@ class HomeAutomationApp {
             }
         } catch (error) {
             console.error('Reconnection failed:', error);
-            this.showToast('Reconnection failed. Please check your settings.', 'error');
+            this.showToast('Reconnection failed. Please refresh the page.', 'error');
         }
         
         return false;
@@ -598,7 +573,7 @@ class HomeAutomationApp {
 
         // Check if Supabase is properly initialized
         if (!this.supabase || !this.supabase.auth) {
-            this.showToast('Connection not established. Please check your settings and try again.', 'error');
+            this.showToast('Connection not established. Please refresh the page and try again.', 'error');
             console.error('Supabase client not initialized properly');
             
             // Offer to reconnect on mobile devices
@@ -657,7 +632,7 @@ class HomeAutomationApp {
 
         // Check if Supabase is properly initialized
         if (!this.supabase || !this.supabase.auth) {
-            this.showToast('Connection not established. Please check your settings and try again.', 'error');
+            this.showToast('Connection not established. Please refresh the page and try again.', 'error');
             console.error('Supabase client not initialized properly');
             
             // Offer to reconnect on mobile devices
@@ -1815,36 +1790,6 @@ class HomeAutomationApp {
             this.showToast('Failed to execute command.', 'error');
             this.isProcessingVoiceCommand = false;
         }
-    }
-
-    openSettings() {
-        this.openModal('settingsModal');
-    }
-
-    closeSettings() {
-        this.closeModal('settingsModal');
-    }
-
-    saveSettings() {
-        const supabaseUrl = document.getElementById('supabaseUrl').value.trim();
-        const supabaseKey = document.getElementById('supabaseKey').value.trim();
-
-        if (!this.validateForm([
-            { value: supabaseUrl, name: 'Supabase URL' },
-            { value: supabaseKey, name: 'Supabase Key' }
-        ])) {
-            return;
-        }
-
-        localStorage.setItem('supabaseUrl', supabaseUrl);
-        localStorage.setItem('supabaseKey', supabaseKey);
-
-        this.closeSettings();
-        this.showToast('Settings saved! Reconnecting...', 'success');
-        
-        setTimeout(() => {
-            this.initializeSupabase();
-        }, 1000);
     }
 
     showToast(message, type = 'success') {
