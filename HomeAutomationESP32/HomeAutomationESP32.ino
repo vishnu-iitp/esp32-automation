@@ -64,6 +64,7 @@ bool registerUnclaimedDevice();
 bool checkClaimStatus();
 void setupClaimedDevice();
 void setupUnclaimedDevice();
+bool fetchAndSetInitialDeviceStates();
 
 void setup() {
     Serial.begin(115200);
@@ -276,6 +277,14 @@ void setClaimedStatus(bool claimed) {
 void setupClaimedDevice() {
     Serial.println("Setting up claimed device - connecting to real-time WebSocket...");
     
+    // Fetch and set initial device states before connecting to WebSocket
+    Serial.println("Fetching initial device states...");
+    if (fetchAndSetInitialDeviceStates()) {
+        Serial.println("Initial device states set successfully");
+    } else {
+        Serial.println("Warning: Could not fetch initial device states");
+    }
+    
     // Setup Supabase WebSocket connection
     String host = String(SUPABASE_PROJECT_ID) + ".supabase.co";
     String path = "/realtime/v1/websocket?apikey=" + String(SUPABASE_ANON_KEY) + "&vsn=1.0.0";
@@ -360,4 +369,91 @@ bool checkClaimStatus() {
     
     http.end();
     return false;
+}
+
+bool fetchAndSetInitialDeviceStates() {
+    Serial.println("Fetching device states from Supabase...");
+    
+    http.begin("https://" + String(SUPABASE_PROJECT_ID) + ".supabase.co/functions/v1/get-device-states");
+    http.addHeader("Content-Type", "application/json");
+    http.addHeader("Authorization", "Bearer " + String(SUPABASE_ANON_KEY));
+    
+    DynamicJsonDocument requestDoc(256);
+    requestDoc["mac_address"] = deviceMacAddress;
+    
+    String requestPayload;
+    serializeJson(requestDoc, requestPayload);
+    
+    int httpCode = http.POST(requestPayload);
+    
+    if (httpCode == 200) {
+        String response = http.getString();
+        Serial.println("Device states response: " + response);
+        
+        DynamicJsonDocument responseDoc(2048);
+        DeserializationError error = deserializeJson(responseDoc, response);
+        
+        if (error) {
+            Serial.println("Failed to parse device states response: " + String(error.c_str()));
+            http.end();
+            return false;
+        }
+        
+        bool success = responseDoc["success"];
+        bool claimed = responseDoc["claimed"];
+        
+        if (!success) {
+            Serial.println("Error fetching device states: " + String(responseDoc["error"].as<String>()));
+            http.end();
+            return false;
+        }
+        
+        if (!claimed) {
+            Serial.println("Device is not claimed yet, skipping state fetch");
+            http.end();
+            return true; // Not an error, just not claimed
+        }
+        
+        JsonArray devices = responseDoc["devices"];
+        int deviceCount = responseDoc["device_count"];
+        
+        Serial.println("Found " + String(deviceCount) + " devices to initialize");
+        
+        // Apply the states to GPIO pins
+        for (JsonObject device : devices) {
+            int gpio = device["gpio"];
+            int state = device["state"];
+            String name = device["name"];
+            
+            Serial.printf("Setting device '%s' on GPIO %d to state %d\n", 
+                         name.c_str(), gpio, state);
+            
+            // Initialize GPIO if not already done
+            if (gpio >= 0 && gpio <= 39) {
+                if (!initializedPins[gpio]) {
+                    initializeGPIO(gpio);
+                    Serial.printf("GPIO %d initialized for device state fetch\n", gpio);
+                }
+                
+                // Set the GPIO to the stored state
+                digitalWrite(gpio, state == 1 ? HIGH : LOW);
+                
+                Serial.printf("GPIO %d set to %s\n", gpio, state == 1 ? "HIGH" : "LOW");
+            } else {
+                Serial.printf("Invalid GPIO %d for device '%s'\n", gpio, name.c_str());
+            }
+        }
+        
+        http.end();
+        return true;
+        
+    } else {
+        Serial.println("Failed to fetch device states. HTTP code: " + String(httpCode));
+        if (httpCode > 0) {
+            String errorResponse = http.getString();
+            Serial.println("Error response: " + errorResponse);
+        }
+        http.end();
+        return false;
+    }
 }

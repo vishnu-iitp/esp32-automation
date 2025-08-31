@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Mobile Debug - Home Automation</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background: #f5f5f5;
+            margin: 0;
+        }
+        .debug-container {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .debug-button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 5px;
+            font-size: 16px;
+            margin: 10px 0;
+            width: 100%;
+            cursor: pointer;
+        }
+        .debug-button:hover {
+            background: #0056b3;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .status.info {
+            background: #cce7f0;
+            color: #055160;
+            border: 1px solid #b6d4fe;
+        }
+        .console-output {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            font-family: monospace;
+            font-size: 14px;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="debug-container">
+        <h1>🔧 Mobile Debug Tool</h1>
+        <p>This page helps diagnose mobile browser issues with the Home Automation app.</p>
+        
+        <div id="deviceInfo" class="status info">
+            Loading device information...
+        </div>
+        
+        <button class="debug-button" onclick="runMobileDebug()">
+            🔍 Run Mobile Debug
+        </button>
+        
+        <button class="debug-button" onclick="runAuthDebug()">
+            🔐 Run Auth Debug
+        </button>
+        
+        <button class="debug-button" onclick="testStorage()">
+            💾 Test Storage
+        </button>
+        
+        <button class="debug-button" onclick="testSupabaseConnection()">
+            🌐 Test Supabase Connection
+        </button>
+        
+        <button class="debug-button" onclick="clearAllData()">
+            🗑️ Clear All Data
+        </button>
+        
+        <div id="output" class="console-output">
+            Debug output will appear here...
+        </div>
+        
+        <div class="debug-container">
+            <h3>Quick Actions</h3>
+            <p>Use these buttons to quickly test different aspects of the app:</p>
+            <button class="debug-button" onclick="goToMainApp()">
+                🏠 Go to Main App
+            </button>
+        </div>
+    </div>
+
+    <script>
+        let output = document.getElementById('output');
+        
+        // Capture console logs
+        const originalLog = console.log;
+        const originalError = console.error;
+        const originalWarn = console.warn;
+        
+        function logToOutput(message, type = 'log') {
+            const timestamp = new Date().toLocaleTimeString();
+            const prefix = type === 'error' ? '❌' : type === 'warn' ? '⚠️' : '📝';
+            output.textContent += `[${timestamp}] ${prefix} ${message}\n`;
+            output.scrollTop = output.scrollHeight;
+        }
+        
+        console.log = function(...args) {
+            logToOutput(args.join(' '), 'log');
+            originalLog.apply(console, args);
+        };
+        
+        console.error = function(...args) {
+            logToOutput(args.join(' '), 'error');
+            originalError.apply(console, args);
+        };
+        
+        console.warn = function(...args) {
+            logToOutput(args.join(' '), 'warn');
+            originalWarn.apply(console, args);
+        };
+        
+        // Device detection
+        function detectDevice() {
+            const userAgent = navigator.userAgent || navigator.vendor || window.opera;
+            const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|Windows Phone|Mobile/i.test(userAgent) ||
+                            (window.innerWidth <= 768 && window.innerHeight <= 1024);
+            
+            const deviceInfo = {
+                isMobile: isMobile,
+                userAgent: userAgent,
+                viewport: {
+                    width: window.innerWidth,
+                    height: window.innerHeight,
+                    ratio: window.devicePixelRatio
+                },
+                features: {
+                    touchSupport: 'ontouchstart' in window,
+                    localStorage: typeof(Storage) !== "undefined",
+                    serviceWorker: 'serviceWorker' in navigator,
+                    webkitSpeechRecognition: 'webkitSpeechRecognition' in window,
+                    speechRecognition: 'SpeechRecognition' in window
+                }
+            };
+            
+            const infoDiv = document.getElementById('deviceInfo');
+            infoDiv.innerHTML = `
+                <strong>Device Type:</strong> ${isMobile ? '📱 Mobile' : '💻 Desktop'}<br>
+                <strong>Viewport:</strong> ${deviceInfo.viewport.width}x${deviceInfo.viewport.height}<br>
+                <strong>Touch:</strong> ${deviceInfo.features.touchSupport ? '✅' : '❌'}<br>
+                <strong>Storage:</strong> ${deviceInfo.features.localStorage ? '✅' : '❌'}
+            `;
+            
+            return deviceInfo;
+        }
+        
+        function runMobileDebug() {
+            logToOutput('=== MOBILE DEBUG START ===');
+            const deviceInfo = detectDevice();
+            logToOutput(`Device Type: ${deviceInfo.isMobile ? 'Mobile' : 'Desktop'}`);
+            logToOutput(`User Agent: ${deviceInfo.userAgent}`);
+            logToOutput(`Viewport: ${deviceInfo.viewport.width}x${deviceInfo.viewport.height}`);
+            logToOutput(`Device Pixel Ratio: ${deviceInfo.viewport.ratio}`);
+            logToOutput(`Touch Support: ${deviceInfo.features.touchSupport}`);
+            logToOutput(`Local Storage: ${deviceInfo.features.localStorage}`);
+            logToOutput(`Service Worker: ${deviceInfo.features.serviceWorker}`);
+            logToOutput(`Speech Recognition: ${deviceInfo.features.webkitSpeechRecognition || deviceInfo.features.speechRecognition}`);
+            logToOutput('=== MOBILE DEBUG END ===');
+        }
+        
+        function runAuthDebug() {
+            logToOutput('=== AUTH DEBUG START ===');
+            
+            // Check for stored credentials
+            const supabaseUrl = localStorage.getItem('supabaseUrl');
+            const supabaseKey = localStorage.getItem('supabaseKey');
+            const authToken = localStorage.getItem('supabase.auth.token');
+            
+            logToOutput(`Supabase URL configured: ${supabaseUrl ? '✅' : '❌'}`);
+            logToOutput(`Supabase Key configured: ${supabaseKey ? '✅' : '❌'}`);
+            logToOutput(`Auth token in localStorage: ${authToken ? '✅' : '❌'}`);
+            
+            // Check sessionStorage on mobile
+            if (detectDevice().isMobile) {
+                const sessionToken = sessionStorage.getItem('supabase.auth.token');
+                logToOutput(`Auth token in sessionStorage: ${sessionToken ? '✅' : '❌'}`);
+            }
+            
+            if (authToken) {
+                try {
+                    const parsed = JSON.parse(authToken);
+                    const isExpired = parsed.expires_at < Math.floor(Date.now() / 1000);
+                    logToOutput(`Token expired: ${isExpired ? '❌' : '✅'}`);
+                    logToOutput(`Token expiry: ${new Date(parsed.expires_at * 1000).toLocaleString()}`);
+                } catch (e) {
+                    logToOutput(`Token parsing failed: ${e.message}`);
+                }
+            }
+            
+            logToOutput('=== AUTH DEBUG END ===');
+        }
+        
+        function testStorage() {
+            logToOutput('=== STORAGE TEST START ===');
+            
+            // Test localStorage
+            try {
+                localStorage.setItem('test_item', 'test_value');
+                const value = localStorage.getItem('test_item');
+                localStorage.removeItem('test_item');
+                logToOutput(`localStorage: ${value === 'test_value' ? '✅ Working' : '❌ Failed'}`);
+            } catch (e) {
+                logToOutput(`localStorage: ❌ Error - ${e.message}`);
+            }
+            
+            // Test sessionStorage
+            try {
+                sessionStorage.setItem('test_item', 'test_value');
+                const value = sessionStorage.getItem('test_item');
+                sessionStorage.removeItem('test_item');
+                logToOutput(`sessionStorage: ${value === 'test_value' ? '✅ Working' : '❌ Failed'}`);
+            } catch (e) {
+                logToOutput(`sessionStorage: ❌ Error - ${e.message}`);
+            }
+            
+            logToOutput('=== STORAGE TEST END ===');
+        }
+        
+        function testSupabaseConnection() {
+            logToOutput('=== SUPABASE CONNECTION TEST START ===');
+            
+            const supabaseUrl = localStorage.getItem('supabaseUrl');
+            const supabaseKey = localStorage.getItem('supabaseKey');
+            
+            if (!supabaseUrl || !supabaseKey) {
+                logToOutput('❌ Supabase credentials not configured');
+                logToOutput('Please go to the main app and configure your Supabase settings first.');
+                return;
+            }
+            
+            // Test if we can load the Supabase library
+            if (typeof supabase === 'undefined') {
+                logToOutput('❌ Supabase library not loaded');
+                return;
+            }
+            
+            try {
+                const client = supabase.createClient(supabaseUrl, supabaseKey);
+                logToOutput('✅ Supabase client created successfully');
+                
+                // Test connection
+                client.auth.getSession().then(({ data, error }) => {
+                    if (error) {
+                        logToOutput(`⚠️ Session check error: ${error.message}`);
+                    } else {
+                        logToOutput(`✅ Connection test successful`);
+                        logToOutput(`Session status: ${data.session ? 'Valid session' : 'No session'}`);
+                    }
+                }).catch(err => {
+                    logToOutput(`❌ Connection test failed: ${err.message}`);
+                });
+                
+            } catch (e) {
+                logToOutput(`❌ Failed to create Supabase client: ${e.message}`);
+            }
+            
+            logToOutput('=== SUPABASE CONNECTION TEST END ===');
+        }
+        
+        function clearAllData() {
+            if (confirm('This will clear all stored data. Are you sure?')) {
+                logToOutput('=== CLEARING ALL DATA ===');
+                
+                try {
+                    localStorage.clear();
+                    sessionStorage.clear();
+                    logToOutput('✅ All storage cleared');
+                } catch (e) {
+                    logToOutput(`❌ Error clearing storage: ${e.message}`);
+                }
+                
+                logToOutput('Please refresh the page and reconfigure your settings.');
+            }
+        }
+        
+        function goToMainApp() {
+            window.location.href = 'index.html';
+        }
+        
+        // Initialize on page load
+        window.addEventListener('load', function() {
+            detectDevice();
+            logToOutput('Mobile Debug Tool loaded successfully');
+            logToOutput('Tip: Check the browser console for additional debug information');
+        });
+    </script>
+    
+    <!-- Load Supabase if available -->
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+</body>
+</html>

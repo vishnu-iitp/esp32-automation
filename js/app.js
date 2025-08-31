@@ -13,12 +13,51 @@ class HomeAutomationApp {
     }
 
     async init() {
-        this.setupEventListeners();
-        this.loadSupabaseConfig();
-        await this.initializeSupabase();
-        await this.checkAuthState();
-        this.setupVoiceControl();
-        this.startSessionMonitoring();
+        try {
+            this.setupEventListeners();
+            this.loadSupabaseConfig();
+            
+            // Add mobile-specific initialization
+            if (this.isMobileDevice()) {
+                console.log('Mobile device detected, applying mobile optimizations');
+                await this.initializeMobileOptimizations();
+            }
+            
+            await this.initializeSupabase();
+            await this.checkAuthState();
+            this.setupVoiceControl();
+            this.startSessionMonitoring();
+        } catch (error) {
+            console.error('Initialization error:', error);
+            this.showToast('Failed to initialize app. Please refresh the page.', 'error');
+        }
+    }
+
+    // Mobile-specific optimizations
+    async initializeMobileOptimizations() {
+        try {
+            // Add touch event optimizations
+            document.body.style.touchAction = 'manipulation';
+            
+            // Prevent zoom on double tap
+            document.addEventListener('touchstart', function(event) {
+                if (event.touches.length > 1) {
+                    event.preventDefault();
+                }
+            }, { passive: false });
+
+            // Add viewport meta tag if not present
+            if (!document.querySelector('meta[name="viewport"]')) {
+                const viewport = document.createElement('meta');
+                viewport.name = 'viewport';
+                viewport.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no';
+                document.head.appendChild(viewport);
+            }
+
+            console.log('Mobile optimizations applied');
+        } catch (error) {
+            console.warn('Failed to apply mobile optimizations:', error);
+        }
     }
 
     startSessionMonitoring() {
@@ -62,29 +101,63 @@ class HomeAutomationApp {
         };
     }
 
-    // Custom storage adapter to handle browser-specific issues
+    // Custom storage adapter to handle browser-specific issues and mobile compatibility
     createCustomStorage() {
+        const isMobile = this.isMobileDevice();
+        console.log('Creating custom storage for:', isMobile ? 'mobile' : 'desktop');
+        
         return {
             getItem: (key) => {
                 try {
-                    return localStorage.getItem(key);
-                } catch (error) {
-                    console.warn('LocalStorage getItem failed:', error);
+                    // Try localStorage first
+                    const value = localStorage.getItem(key);
+                    if (value !== null) {
+                        return value;
+                    }
+                    
+                    // Fallback for mobile devices - try sessionStorage
+                    if (isMobile && sessionStorage) {
+                        return sessionStorage.getItem(key);
+                    }
+                    
                     return null;
+                } catch (error) {
+                    console.warn('Storage getItem failed:', error);
+                    // Try sessionStorage as fallback
+                    try {
+                        return sessionStorage.getItem(key);
+                    } catch (fallbackError) {
+                        console.warn('SessionStorage getItem also failed:', fallbackError);
+                        return null;
+                    }
                 }
             },
             setItem: (key, value) => {
                 try {
                     localStorage.setItem(key, value);
+                    // Also store in sessionStorage for mobile reliability
+                    if (isMobile && sessionStorage) {
+                        sessionStorage.setItem(key, value);
+                    }
                 } catch (error) {
                     console.warn('LocalStorage setItem failed:', error);
+                    // Fallback to sessionStorage
+                    try {
+                        sessionStorage.setItem(key, value);
+                    } catch (fallbackError) {
+                        console.warn('SessionStorage setItem also failed:', fallbackError);
+                    }
                 }
             },
             removeItem: (key) => {
                 try {
                     localStorage.removeItem(key);
+                    // Also remove from sessionStorage
+                    if (sessionStorage) {
+                        sessionStorage.removeItem(key);
+                    }
                 } catch (error) {
-                    console.warn('LocalStorage removeItem failed:', error);
+                    console.warn('Storage removeItem failed:', error);
                 }
             }
         };
@@ -260,7 +333,8 @@ class HomeAutomationApp {
             // Configure Supabase with proper options for browser compatibility
             const customStorage = this.createCustomStorage();
             
-            this.supabase = supabase.createClient(supabaseUrl, supabaseKey, {
+            // Enhanced configuration for mobile compatibility
+            const supabaseConfig = {
                 auth: {
                     autoRefreshToken: true,
                     persistSession: true,
@@ -273,19 +347,120 @@ class HomeAutomationApp {
                     headers: {
                         'X-Client-Info': 'supabase-js-web'
                     }
+                },
+                realtime: {
+                    params: {
+                        eventsPerSecond: 10
+                    }
                 }
-            });
+            };
+
+            // Additional mobile-specific configuration
+            if (this.isMobileDevice()) {
+                console.log('Mobile device detected, applying mobile-specific configuration');
+                supabaseConfig.auth.autoRefreshToken = true;
+                supabaseConfig.auth.persistSession = true;
+                // Disable session URL detection on mobile to prevent issues
+                supabaseConfig.auth.detectSessionInUrl = false;
+            }
+            
+            this.supabase = supabase.createClient(supabaseUrl, supabaseKey, supabaseConfig);
+            
+            // Verify the client was created successfully
+            if (!this.supabase || !this.supabase.auth) {
+                throw new Error('Failed to create Supabase client properly');
+            }
+            
+            // Test the connection with a simple operation
+            await this.testSupabaseConnection();
+            
             this.updateConnectionStatus('connected', 'Connected to Supabase');
             this.showToast('Successfully connected to Supabase!', 'success');
         } catch (error) {
             console.error('Supabase initialization error:', error);
+            this.supabase = null; // Ensure it's null on error
             this.updateConnectionStatus('disconnected', 'Failed to connect to Supabase');
             this.showToast('Failed to connect to Supabase. Check your configuration.', 'error');
         }
     }
 
+    // Test if Supabase connection is working
+    async testSupabaseConnection() {
+        try {
+            // Simple test to verify the connection works
+            const { data, error } = await this.supabase.auth.getSession();
+            console.log('Supabase connection test successful');
+            return true;
+        } catch (error) {
+            console.error('Supabase connection test failed:', error);
+            throw new Error('Supabase connection test failed: ' + error.message);
+        }
+    }
+
+    // Add retry mechanism for failed operations
+    async retryOperation(operation, maxRetries = 3, delay = 1000) {
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                return await operation();
+            } catch (error) {
+                console.warn(`Operation failed (attempt ${attempt}/${maxRetries}):`, error);
+                
+                if (attempt === maxRetries) {
+                    throw error;
+                }
+                
+                // Wait before retrying
+                await new Promise(resolve => setTimeout(resolve, delay * attempt));
+            }
+        }
+    }
+
+    // Reconnect to Supabase if connection is lost
+    async reconnectSupabase() {
+        console.log('Attempting to reconnect to Supabase...');
+        this.supabase = null;
+        
+        try {
+            await this.initializeSupabase();
+            if (this.supabase && this.supabase.auth) {
+                await this.checkAuthState();
+                this.showToast('Reconnected successfully!', 'success');
+                return true;
+            }
+        } catch (error) {
+            console.error('Reconnection failed:', error);
+            this.showToast('Reconnection failed. Please check your settings.', 'error');
+        }
+        
+        return false;
+    }
+
+    // Detect if running on mobile device
+    isMobileDevice() {
+        const userAgent = navigator.userAgent || navigator.vendor || window.opera;
+        
+        // Check for mobile patterns
+        const mobilePatterns = [
+            /Android/i,
+            /webOS/i,
+            /iPhone/i,
+            /iPad/i,
+            /iPod/i,
+            /BlackBerry/i,
+            /Windows Phone/i,
+            /Mobile/i
+        ];
+        
+        return mobilePatterns.some(pattern => pattern.test(userAgent)) || 
+               (window.innerWidth <= 768 && window.innerHeight <= 1024);
+    }
+
     async checkAuthState() {
-        if (!this.supabase) return;
+        if (!this.supabase || !this.supabase.auth) {
+            console.warn('Supabase client not available during auth state check');
+            this.onUserSignedOut();
+            return;
+        }
 
         try {
             // Get current session with proper error handling
@@ -296,6 +471,7 @@ class HomeAutomationApp {
                 // Only clear session data if it's an auth-related error, not network issues
                 if (error.message && (error.message.includes('Invalid') || error.message.includes('expired'))) {
                     localStorage.removeItem('supabase.auth.token');
+                    sessionStorage.removeItem('supabase.auth.token');
                 }
                 this.onUserSignedOut();
                 return;
@@ -311,12 +487,19 @@ class HomeAutomationApp {
             // Listen for auth changes with better error handling
             this.supabase.auth.onAuthStateChange(async (event, session) => {
                 try {
+                    console.log('Auth state change:', event, session?.user?.email || 'no user');
+                    
                     if (event === 'SIGNED_IN' && session?.user) {
                         this.user = session.user;
                         await this.onUserSignedIn();
                     } else if (event === 'SIGNED_OUT' || !session) {
                         this.user = null;
                         this.onUserSignedOut();
+                    }
+                    // Handle token refresh events
+                    else if (event === 'TOKEN_REFRESHED' && session?.user) {
+                        console.log('Token refreshed successfully');
+                        this.user = session.user;
                     }
                     // Ignore other events like INITIAL_SESSION to prevent duplicate initialization
                 } catch (error) {
@@ -413,18 +596,40 @@ class HomeAutomationApp {
             return;
         }
 
+        // Check if Supabase is properly initialized
+        if (!this.supabase || !this.supabase.auth) {
+            this.showToast('Connection not established. Please check your settings and try again.', 'error');
+            console.error('Supabase client not initialized properly');
+            
+            // Offer to reconnect on mobile devices
+            if (this.isMobileDevice()) {
+                setTimeout(async () => {
+                    const reconnected = await this.reconnectSupabase();
+                    if (reconnected) {
+                        this.showToast('Connection restored. Please try signing up again.', 'info');
+                    }
+                }, 2000);
+            }
+            return;
+        }
+
         try {
             await this.updateButtonState('signUpBtn', true, 'Create Account', 'Creating Account...');
 
-            const { data, error } = await this.supabase.auth.signUp({
-                email: email,
-                password: password,
-                options: {
-                    data: {
-                        username: username
+            // Use retry mechanism for better mobile reliability
+            const signUpOperation = async () => {
+                return await this.supabase.auth.signUp({
+                    email: email,
+                    password: password,
+                    options: {
+                        data: {
+                            username: username
+                        }
                     }
-                }
-            });
+                });
+            };
+
+            const { data, error } = await this.retryOperation(signUpOperation, 2, 1500);
 
             if (error) throw error;
 
@@ -450,13 +655,35 @@ class HomeAutomationApp {
             return;
         }
 
+        // Check if Supabase is properly initialized
+        if (!this.supabase || !this.supabase.auth) {
+            this.showToast('Connection not established. Please check your settings and try again.', 'error');
+            console.error('Supabase client not initialized properly');
+            
+            // Offer to reconnect on mobile devices
+            if (this.isMobileDevice()) {
+                setTimeout(async () => {
+                    const reconnected = await this.reconnectSupabase();
+                    if (reconnected) {
+                        this.showToast('Connection restored. Please try signing in again.', 'info');
+                    }
+                }, 2000);
+            }
+            return;
+        }
+
         try {
             await this.updateButtonState('signInBtn', true, 'Sign In', 'Signing In...');
 
-            const { data, error } = await this.supabase.auth.signInWithPassword({
-                email: email,
-                password: password
-            });
+            // Use retry mechanism for better mobile reliability
+            const signInOperation = async () => {
+                return await this.supabase.auth.signInWithPassword({
+                    email: email,
+                    password: password
+                });
+            };
+
+            const { data, error } = await this.retryOperation(signInOperation, 2, 1500);
 
             if (error) throw error;
 
@@ -1915,11 +2142,19 @@ class HomeAutomationApp {
         console.log('=== AUTHENTICATION DEBUG INFO ===');
         
         const browserInfo = this.getBrowserInfo();
+        const isMobile = this.isMobileDevice();
         console.log('Browser Info:', browserInfo);
+        console.log('Is Mobile Device:', isMobile);
         
         // Check localStorage
         const authToken = localStorage.getItem('supabase.auth.token');
         console.log('Auth token in localStorage:', authToken ? 'Present' : 'Not found');
+        
+        // Check sessionStorage on mobile
+        if (isMobile) {
+            const sessionToken = sessionStorage.getItem('supabase.auth.token');
+            console.log('Auth token in sessionStorage:', sessionToken ? 'Present' : 'Not found');
+        }
         
         if (authToken) {
             try {
@@ -1968,13 +2203,52 @@ class HomeAutomationApp {
             userState: !!this.user
         };
     }
+
+    // Mobile-specific debug information
+    async debugMobile() {
+        if (!this.isMobileDevice()) {
+            console.log('Not a mobile device');
+            return;
+        }
+
+        console.log('=== MOBILE DEBUG INFO ===');
+        console.log('User Agent:', navigator.userAgent);
+        console.log('Viewport:', {
+            width: window.innerWidth,
+            height: window.innerHeight,
+            ratio: window.devicePixelRatio
+        });
+        console.log('Touch Support:', 'ontouchstart' in window);
+        console.log('Local Storage Available:', typeof(Storage) !== "undefined");
+        console.log('Service Worker Support:', 'serviceWorker' in navigator);
+        
+        // Test storage
+        try {
+            localStorage.setItem('test', 'test');
+            localStorage.removeItem('test');
+            console.log('Local Storage: Working');
+        } catch (e) {
+            console.log('Local Storage: Failed -', e);
+        }
+
+        try {
+            sessionStorage.setItem('test', 'test');
+            sessionStorage.removeItem('test');
+            console.log('Session Storage: Working');
+        } catch (e) {
+            console.log('Session Storage: Failed -', e);
+        }
+
+        console.log('=== END MOBILE DEBUG INFO ===');
+    }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
     window.app = new HomeAutomationApp();
     
-    // Make debug function available globally
+    // Make debug functions available globally
     window.debugAuth = () => window.app.debugAuth();
+    window.debugMobile = () => window.app.debugMobile();
 });
 
 if ('serviceWorker' in navigator) {
