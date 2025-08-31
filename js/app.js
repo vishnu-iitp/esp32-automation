@@ -9,12 +9,16 @@ class HomeAutomationApp {
         this.realtimeChannel = null; // Track the realtime channel for cleanup
         this.isSignedIn = false; // Track sign-in state to prevent duplicate initialization
         
+        // PWA Install properties
+        this.deferredPrompt = null;
+        
         this.init();
     }
 
     async init() {
         try {
             this.setupEventListeners();
+            this.setupPWAInstall();
             this.loadSupabaseConfig();
             
             // Add mobile-specific initialization
@@ -182,6 +186,10 @@ class HomeAutomationApp {
         if (signInBtn) signInBtn.addEventListener('click', () => this.signIn());
         if (signUpBtn) signUpBtn.addEventListener('click', () => this.signUp());
         if (logoutBtn) logoutBtn.addEventListener('click', () => this.signOut());
+
+        // PWA Install button event listener
+        const installBtn = document.getElementById('installBtn');
+        if (installBtn) installBtn.addEventListener('click', () => this.installPWA());
 
         // Claim Device event listeners
         const claimDeviceBtn = document.getElementById('claimDeviceBtn');
@@ -428,6 +436,102 @@ class HomeAutomationApp {
         
         return mobilePatterns.some(pattern => pattern.test(userAgent)) || 
                (window.innerWidth <= 768 && window.innerHeight <= 1024);
+    }
+
+    // PWA Install functionality
+    setupPWAInstall() {
+        // Listen for the beforeinstallprompt event
+        window.addEventListener('beforeinstallprompt', (e) => {
+            console.log('PWA install prompt available');
+            // Prevent the mini-infobar from appearing on mobile
+            e.preventDefault();
+            // Store the event for later use
+            this.deferredPrompt = e;
+            // Show the install button
+            this.showInstallButton();
+        });
+
+        // Listen for app installation
+        window.addEventListener('appinstalled', (e) => {
+            console.log('PWA was installed');
+            this.hideInstallButton();
+            this.showToast('App installed successfully!', 'success');
+        });
+
+        // Check if app is already installed
+        if (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) {
+            console.log('App is running in standalone mode (already installed)');
+            this.hideInstallButton();
+        }
+
+        // For iOS Safari, check if it's in standalone mode
+        if (window.navigator.standalone === true) {
+            console.log('App is running in iOS standalone mode');
+            this.hideInstallButton();
+        }
+    }
+
+    showInstallButton() {
+        const installBtn = document.getElementById('installBtn');
+        if (installBtn) {
+            installBtn.style.display = 'block';
+            console.log('Install button shown');
+        }
+    }
+
+    hideInstallButton() {
+        const installBtn = document.getElementById('installBtn');
+        if (installBtn) {
+            installBtn.style.display = 'none';
+            console.log('Install button hidden');
+        }
+    }
+
+    async installPWA() {
+        if (!this.deferredPrompt) {
+            // For iOS Safari, show instructions
+            if (this.isiOS()) {
+                this.showIOSInstallInstructions();
+                return;
+            }
+            
+            console.log('No install prompt available');
+            this.showToast('Install not available. Try using Chrome or Edge browser.', 'info');
+            return;
+        }
+
+        try {
+            // Show the install prompt
+            this.deferredPrompt.prompt();
+            
+            // Wait for the user to respond to the prompt
+            const { outcome } = await this.deferredPrompt.userChoice;
+            
+            if (outcome === 'accepted') {
+                console.log('User accepted the install prompt');
+                this.showToast('Installing app...', 'success');
+            } else {
+                console.log('User dismissed the install prompt');
+                this.showToast('Installation cancelled', 'info');
+            }
+            
+            // Clear the saved prompt since it can only be used once
+            this.deferredPrompt = null;
+            this.hideInstallButton();
+            
+        } catch (error) {
+            console.error('Error during PWA installation:', error);
+            this.showToast('Installation failed. Please try again.', 'error');
+        }
+    }
+
+    isiOS() {
+        return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    }
+
+    showIOSInstallInstructions() {
+        const message = 'To install this app on iOS:\n1. Tap the Share button\n2. Tap "Add to Home Screen"\n3. Tap "Add"';
+        alert(message);
     }
 
     async checkAuthState() {

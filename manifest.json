@@ -2,12 +2,12 @@
   "name": "Smart Home Control",
   "short_name": "SmartHome",
   "description": "Real-time home automation control with ESP32",
-  "start_url": "/",
+  "start_url": "./",
   "display": "standalone",
   "background_color": "#667eea",
   "theme_color": "#1e3a8a",
   "orientation": "portrait-primary",
-  "scope": "/",
+  "scope": "./",
   "lang": "en-US",
   "icons": [
     {

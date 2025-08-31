@@ -1,12 +1,12 @@
-const CACHE_NAME = 'smart-home-v1.0.1'; // Updated version to force cache refresh
+const CACHE_NAME = 'smart-home-v1.0.2'; // Updated version to force cache refresh
 const urlsToCache = [
-  '/',
-  '/index.html',
-  '/css/styles.css',
-  '/js/app.js',
-  '/manifest.json',
-  '/icons/icon-192x192.png',
-  '/icons/icon-512x512.png',
+  './',
+  './index.html',
+  './css/styles.css',
+  './js/app.js',
+  './manifest.json',
+  './icons/icon-192x192.png',
+  './icons/icon-512x512.png',
   'https://unpkg.com/@supabase/supabase-js@2'
 ];
 
@@ -30,7 +30,7 @@ self.addEventListener('install', (event) => {
 // Fetch event - use network-first strategy for critical files
 self.addEventListener('fetch', (event) => {
   // Critical files that should always be fresh
-  const criticalFiles = ['/js/app.js', '/css/styles.css', '/index.html'];
+  const criticalFiles = ['js/app.js', 'css/styles.css', 'index.html'];
   const isCriticalFile = criticalFiles.some(file => event.request.url.includes(file));
   
   if (isCriticalFile) {
