@@ -9,7 +9,10 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
-  console.log('Device claim function called, method:', req.method);
+  console.log('=== DEVICE CLAIM FUNCTION CALLED ===');
+  console.log('Method:', req.method);
+  console.log('URL:', req.url);
+  console.log('Headers:', Object.fromEntries(req.headers.entries()));
   
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -18,15 +21,31 @@ serve(async (req) => {
   }
 
   try {
-    console.log('Processing device claim request');
+    console.log('=== ENVIRONMENT CHECK ===');
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY');
+    console.log('SUPABASE_URL present:', !!supabaseUrl);
+    console.log('SUPABASE_ANON_KEY present:', !!supabaseAnonKey);
+    
+    if (!supabaseUrl || !supabaseAnonKey) {
+      console.error('Missing environment variables');
+      return new Response(JSON.stringify({ 
+        error: 'Server configuration error - missing environment variables' 
+      }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    
+    console.log('=== PROCESSING REQUEST ===');
     
     // Create a Supabase client with the user's authentication context
     const authHeader = req.headers.get('Authorization');
     console.log('Auth header present:', !!authHeader);
     
     const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      supabaseUrl,
+      supabaseAnonKey,
       // Pass the user's authorization header to the client if present
       authHeader ? { global: { headers: { Authorization: authHeader } } } : {}
     );
