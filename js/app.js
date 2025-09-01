@@ -973,9 +973,12 @@ class HomeAutomationApp {
         try {
             await this.updateButtonState('saveClaimDevice', true, 'Claim Device', 'Claiming...');
 
-            const { data, error } = await this.supabase.functions.invoke('device-claim', {
+            const { data, error } = await this.supabase.functions.invoke('diagnostic', {
                 body: { mac_address: macAddress }
             });
+
+            console.log('Diagnostic result:', data);
+            console.log('Diagnostic error:', error);
 
             if (error) throw error;
 
