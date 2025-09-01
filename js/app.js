@@ -977,9 +977,6 @@ class HomeAutomationApp {
                 body: { mac_address: macAddress }
             });
 
-            console.log('Device claim result:', data);
-            console.log('Device claim error:', error);
-
             if (error) throw error;
 
             this.closeClaimDeviceModal();
