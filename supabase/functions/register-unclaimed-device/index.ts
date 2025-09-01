@@ -15,7 +15,7 @@ serve(async (req)=>{
     // Create Supabase client
     const supabaseClient = createClient(Deno.env.get('SUPABASE_URL') ?? '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '');
     // Parse request body
-    const { mac_address, device_name = "New ESP32", gpio = 23 } = await req.json();
+    const { mac_address, device_name = "Bulb", gpio = 23 } = await req.json();
     if (!mac_address) {
       return new Response(JSON.stringify({
         error: 'MAC address is required'
@@ -93,7 +93,7 @@ serve(async (req)=>{
       state: 0,
       mac_address: normalizedMac,
       user_id: null,
-      device_type: 'outlet',
+      device_type: 'light',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     });
