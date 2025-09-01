@@ -7,10 +7,10 @@
  * - Auto-registration for unclaimed devices
  * - Real-time device control via Supabase WebSocket for claimed devices
  * - Periodic claim status checking for unclaimed devices
- * - MAC address based device identification
+ * - Custom MAC address based device identification
  * 
  * Author: ESP32 Home Automation Team
- * Version: 3.0 (Multi-User Support)
+ * Version: 3.1 (Custom MAC Address Support)
  */
 
 #include <WiFi.h>
@@ -18,12 +18,14 @@
 #include <WebSocketsClient.h>
 #include <HTTPClient.h>
 #include <EEPROM.h>
+#include "WiFiManager.h"
 
 // =================== CONFIGURATION ===================
-const char* WIFI_SSID = "JioFiber-vishnu_4G";
-const char* WIFI_PASSWORD = "aeasap975";
 const char* SUPABASE_PROJECT_ID = "ahmseisassvgxbbccqyd";
 const char* SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFobXNlaXNhc3N2Z3hiYmNjcXlkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTYzOTgyNDEsImV4cCI6MjA3MTk3NDI0MX0.VR3dkEUvDzkH8s9YXQq3E3XCRSu62ldE1Qs9-DI1CaI";
+
+// Custom MAC Address Configuration (modify this to create unique device identifiers)
+const char* CUSTOM_MAC_ADDRESS = "10:22:FB:3F:A0:3F";
 
 // EEPROM Configuration
 const int EEPROM_SIZE = 512;
@@ -34,6 +36,7 @@ const byte CLAIMED = 1;
 // Device Configuration
 const int DEVICE_PINS[] = {23, 22, 21, 19, 18, 5, 4, 2};
 const int NUM_PINS = sizeof(DEVICE_PINS) / sizeof(DEVICE_PINS[0]);
+const int RESET_BUTTON_PIN = 5; // GPIO 0 (BOOT button) for WiFi reset
 
 // Timing Configuration
 const unsigned long HEARTBEAT_INTERVAL = 30000; // 30 seconds
@@ -41,6 +44,7 @@ const unsigned long CLAIM_CHECK_INTERVAL = 30000; // 30 seconds for unclaimed de
 const unsigned long REGISTRATION_RETRY_INTERVAL = 60000; // 1 minute
 
 // =================== GLOBAL VARIABLES ===================
+ModernWiFiManager wifiManager;
 WebSocketsClient webSocket;
 HTTPClient http;
 int messageRef = 1;
@@ -57,7 +61,7 @@ void handleWebSocketMessage(uint8_t * payload, size_t length);
 void subscribeToDevicesTable();
 void sendHeartbeat();
 void initializeGPIO(int gpio);
-String getMacAddress();
+String getMacAddress(); // Helper function to get hardware MAC (for debugging)
 bool getClaimedStatus();
 void setClaimedStatus(bool claimed);
 bool registerUnclaimedDevice();
@@ -65,16 +69,17 @@ bool checkClaimStatus();
 void setupClaimedDevice();
 void setupUnclaimedDevice();
 bool fetchAndSetInitialDeviceStates();
+void checkResetButton();
 
 void setup() {
     Serial.begin(115200);
-    Serial.println("\n=== ESP32 Home Automation (Multi-User Version) ===");
+    Serial.println("\n=== ESP32 Home Automation (Multi-User Version with WiFi Manager) ===");
     
     // Initialize EEPROM
     EEPROM.begin(EEPROM_SIZE);
     
-    // Get device MAC address
-    deviceMacAddress = getMacAddress();
+    // Set custom MAC address (instead of hardware MAC)
+    deviceMacAddress = String(CUSTOM_MAC_ADDRESS);
     Serial.println("Device MAC Address: " + deviceMacAddress);
     
     // Check claimed status from EEPROM
@@ -85,14 +90,21 @@ void setup() {
     for (int i = 0; i < NUM_PINS; i++) {
         initializeGPIO(DEVICE_PINS[i]);
     }
+    
+    // Initialize reset button
+    pinMode(RESET_BUTTON_PIN, INPUT_PULLUP);
 
-    // Connect to WiFi
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-    while (WiFi.status() != WL_CONNECTED) {
-        delay(500);
-        Serial.print(".");
+    // Initialize WiFi Manager and connect
+    wifiManager.begin();
+    
+    // Wait for WiFi connection or config mode
+    while (wifiManager.isInConfigMode()) {
+        wifiManager.handleClient();
+        delay(10);
     }
-    Serial.println("\nWiFi connected!");
+    
+    // WiFi is connected, proceed with normal operation
+    Serial.println("WiFi connected! Continuing with normal operation...");
 
     if (isDeviceClaimed) {
         setupClaimedDevice();
@@ -102,6 +114,15 @@ void setup() {
 }
 
 void loop() {
+    // Check for WiFi reset button press
+    checkResetButton();
+    
+    // Handle WiFi Manager if in config mode
+    if (wifiManager.isInConfigMode()) {
+        wifiManager.handleClient();
+        return;
+    }
+    
     if (isDeviceClaimed) {
         // Normal operation for claimed devices
         webSocket.loop();
@@ -255,6 +276,8 @@ void sendHeartbeat() {
 
 // =================== MULTI-USER SUPPORT FUNCTIONS ===================
 
+// Helper function to get hardware MAC address (for debugging purposes)
+// Note: The system now uses CUSTOM_MAC_ADDRESS instead of hardware MAC
 String getMacAddress() {
     uint8_t mac[6];
     WiFi.macAddress(mac);
@@ -310,8 +333,8 @@ bool registerUnclaimedDevice() {
     
     DynamicJsonDocument doc(256);
     doc["mac_address"] = deviceMacAddress;
-    doc["device_name"] = "New ESP32 Device";
-    doc["gpio"] = 0;
+    doc["device_name"] = "Smart bulb";
+    doc["gpio"] = 23;
     
     String payload;
     serializeJson(doc, payload);
@@ -455,5 +478,33 @@ bool fetchAndSetInitialDeviceStates() {
         }
         http.end();
         return false;
+    }
+}
+
+// =================== RESET BUTTON FUNCTIONALITY ===================
+void checkResetButton() {
+    static unsigned long buttonPressTime = 0;
+    static bool buttonPressed = false;
+    
+    if (digitalRead(RESET_BUTTON_PIN) == LOW) { // Button pressed (active low)
+        if (!buttonPressed) {
+            buttonPressed = true;
+            buttonPressTime = millis();
+            Serial.println("Reset button pressed...");
+        }
+        
+        // Check if button held for 5 seconds
+        if (millis() - buttonPressTime > 5000) {
+            Serial.println("Reset button held for 5 seconds. Resetting WiFi settings...");
+            wifiManager.resetWiFiSettings();
+        }
+    } else {
+        if (buttonPressed) {
+            buttonPressed = false;
+            unsigned long pressDuration = millis() - buttonPressTime;
+            if (pressDuration < 5000) {
+                Serial.println("Reset button released (hold for 5 seconds to reset WiFi)");
+            }
+        }
     }
 }
