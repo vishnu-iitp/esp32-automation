@@ -9,23 +9,24 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
-  console.log('=== DEVICE CLAIM FUNCTION CALLED ===');
+  console.log('=== DEVICE CLAIM FUNCTION START ===');
   console.log('Method:', req.method);
   console.log('URL:', req.url);
-  console.log('Headers:', Object.fromEntries(req.headers.entries()));
   
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    console.log('Handling CORS preflight request');
+    console.log('CORS preflight - returning 200');
     return new Response('ok', { headers: corsHeaders });
   }
 
   try {
-    console.log('=== ENVIRONMENT CHECK ===');
+    console.log('=== STEP 1: Environment Check ===');
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY');
-    console.log('SUPABASE_URL present:', !!supabaseUrl);
-    console.log('SUPABASE_ANON_KEY present:', !!supabaseAnonKey);
+    
+    console.log('Environment variables present:');
+    console.log('- SUPABASE_URL:', !!supabaseUrl);
+    console.log('- SUPABASE_ANON_KEY:', !!supabaseAnonKey);
     
     if (!supabaseUrl || !supabaseAnonKey) {
       console.error('Missing environment variables');
@@ -37,34 +38,33 @@ serve(async (req) => {
       });
     }
     
-    console.log('=== PROCESSING REQUEST ===');
-    
-    // Create a Supabase client with the user's authentication context
+    console.log('=== STEP 2: Create Supabase Client ===');
     const authHeader = req.headers.get('Authorization');
     console.log('Auth header present:', !!authHeader);
     
     const supabaseClient = createClient(
       supabaseUrl,
       supabaseAnonKey,
-      // Pass the user's authorization header to the client if present
       authHeader ? { global: { headers: { Authorization: authHeader } } } : {}
     );
+    console.log('Supabase client created successfully');
 
-    // Get the currently authenticated user
+    console.log('=== STEP 3: Check User Authentication ===');
     const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
-    console.log('User authentication check:', !!user, userError?.message || 'no error');
+    console.log('User authentication result:', !!user, userError?.message || 'no error');
     
     if (!user) {
-      console.log('User not authenticated');
+      console.log('User not authenticated - returning 401');
       return new Response(JSON.stringify({ error: 'User not authenticated' }), {
         status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
+    console.log('User authenticated successfully, ID:', user.id);
 
-    // Parse the MAC address from the request body
+    console.log('=== STEP 4: Parse Request Body ===');
     const body = await req.json();
-    console.log('Request body:', body);
+    console.log('Request body received:', body);
     
     const { mac_address } = body;
     if (!mac_address) {
@@ -76,36 +76,48 @@ serve(async (req) => {
     }
 
     const normalizedMac = mac_address.toUpperCase();
-    console.log('Looking for device with MAC:', normalizedMac);
+    console.log('Normalized MAC address:', normalizedMac);
 
-    // Find the device in the 'devices' table
+    console.log('=== STEP 5: Lookup Device ===');
     const { data: device, error: findError } = await supabaseClient
       .from('devices')
       .select('id, user_id')
       .eq('mac_address', normalizedMac)
       .single();
 
-    console.log('Device lookup result:', device, findError?.message || 'no error');
+    console.log('Device lookup result:');
+    console.log('- Device found:', !!device);
+    console.log('- Device data:', device);
+    console.log('- Lookup error:', findError?.message || 'no error');
 
-    if (findError || !device) {
-      console.log('Device not found');
+    if (findError) {
+      console.error('Database error during device lookup:', findError);
+      return new Response(JSON.stringify({ 
+        error: 'Database error: ' + findError.message 
+      }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (!device) {
+      console.log('Device not found - returning 404');
       return new Response(JSON.stringify({ error: 'Device not found. Make sure it is powered on and connected to WiFi.' }), {
         status: 404,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    // Check if the device is already claimed by someone
+    console.log('=== STEP 6: Check if Device Already Claimed ===');
     if (device.user_id) {
       console.log('Device already claimed by user:', device.user_id);
       return new Response(JSON.stringify({ error: 'This device has already been claimed.' }), {
-        status: 409, // HTTP 409 Conflict
+        status: 409,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    // Update the device to assign the current user's ID
-    console.log('Claiming device for user:', user.id);
+    console.log('=== STEP 7: Claim Device ===');
     const { error: updateError } = await supabaseClient
       .from('devices')
       .update({ user_id: user.id })
@@ -113,34 +125,38 @@ serve(async (req) => {
 
     if (updateError) {
       console.error('Error updating device:', updateError);
-      return new Response(JSON.stringify({ error: 'Failed to claim the device.' }), {
+      return new Response(JSON.stringify({ error: 'Failed to claim the device: ' + updateError.message }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
+    console.log('Device claimed successfully for user:', user.id);
 
-    // Delete the device from the 'unclaimed_devices' table
-    console.log('Removing device from unclaimed_devices table');
+    console.log('=== STEP 8: Remove from Unclaimed Devices ===');
     const { error: deleteError } = await supabaseClient
       .from('unclaimed_devices')
       .delete()
       .eq('mac_address', normalizedMac);
       
     if (deleteError) {
-      // This is not a critical failure, as the device is already claimed.
-      // Log it for debugging but don't fail the whole request.
       console.error('Warning: Failed to remove device from unclaimed_devices table:', deleteError);
+      // Not a critical failure
+    } else {
+      console.log('Removed device from unclaimed_devices table');
     }
 
-    // Success!
-    console.log('Device claimed successfully');
+    console.log('=== SUCCESS: Device Claim Complete ===');
     return new Response(JSON.stringify({ success: true, message: 'Device claimed successfully' }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 
   } catch (error) {
-    console.error('Unexpected error in device-claim function:', error);
-    return new Response(JSON.stringify({ error: 'Internal server error' }), {
+    console.error('=== UNEXPECTED ERROR ===');
+    console.error('Error details:', error);
+    console.error('Error stack:', error.stack);
+    return new Response(JSON.stringify({ 
+      error: 'Internal server error: ' + error.message 
+    }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
