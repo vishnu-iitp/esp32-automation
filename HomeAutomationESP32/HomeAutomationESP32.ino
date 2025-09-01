@@ -20,8 +20,8 @@
 #include <EEPROM.h>
 
 // =================== CONFIGURATION ===================
-const char* WIFI_SSID = "FiberGateway";
-const char* WIFI_PASSWORD = "RSdm@3862";
+const char* WIFI_SSID = "JioFiber-vishnu_4G";
+const char* WIFI_PASSWORD = "aeasap975";
 const char* SUPABASE_PROJECT_ID = "ahmseisassvgxbbccqyd";
 const char* SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFobXNlaXNhc3N2Z3hiYmNjcXlkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTYzOTgyNDEsImV4cCI6MjA3MTk3NDI0MX0.VR3dkEUvDzkH8s9YXQq3E3XCRSu62ldE1Qs9-DI1CaI";
 

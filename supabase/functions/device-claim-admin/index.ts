@@ -1,5 +1,4 @@
-// File: device-claim/index.ts
-
+// Device claim function using service role key to bypass RLS
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
@@ -9,9 +8,8 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
-  console.log('=== DEVICE CLAIM FUNCTION START ===');
+  console.log('=== DEVICE CLAIM FUNCTION START (SERVICE ROLE) ===');
   console.log('Method:', req.method);
-  console.log('URL:', req.url);
   
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -22,13 +20,13 @@ serve(async (req) => {
   try {
     console.log('=== STEP 1: Environment Check ===');
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY');
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     
     console.log('Environment variables present:');
     console.log('- SUPABASE_URL:', !!supabaseUrl);
-    console.log('- SUPABASE_ANON_KEY:', !!supabaseAnonKey);
+    console.log('- SUPABASE_SERVICE_ROLE_KEY:', !!supabaseServiceKey);
     
-    if (!supabaseUrl || !supabaseAnonKey) {
+    if (!supabaseUrl || !supabaseServiceKey) {
       console.error('Missing environment variables');
       return new Response(JSON.stringify({ 
         error: 'Server configuration error - missing environment variables' 
@@ -38,19 +36,25 @@ serve(async (req) => {
       });
     }
     
-    console.log('=== STEP 2: Create Supabase Client ===');
+    console.log('=== STEP 2: Create Supabase Clients ===');
+    
+    // Client for user authentication (using anon key + auth header)
     const authHeader = req.headers.get('Authorization');
     console.log('Auth header present:', !!authHeader);
     
-    const supabaseClient = createClient(
+    const userClient = createClient(
       supabaseUrl,
-      supabaseAnonKey,
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
       authHeader ? { global: { headers: { Authorization: authHeader } } } : {}
     );
-    console.log('Supabase client created successfully');
+    
+    // Client for database operations (using service key to bypass RLS)
+    const adminClient = createClient(supabaseUrl, supabaseServiceKey);
+    
+    console.log('Supabase clients created successfully');
 
     console.log('=== STEP 3: Check User Authentication ===');
-    const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
+    const { data: { user }, error: userError } = await userClient.auth.getUser();
     console.log('User authentication result:', !!user, userError?.message || 'no error');
     
     if (!user) {
@@ -78,12 +82,12 @@ serve(async (req) => {
     const normalizedMac = mac_address.toUpperCase();
     console.log('Normalized MAC address:', normalizedMac);
 
-    console.log('=== STEP 5: Lookup Device ===');
-    const { data: device, error: findError } = await supabaseClient
+    console.log('=== STEP 5: Lookup Device (using admin client) ===');
+    const { data: device, error: findError } = await adminClient
       .from('devices')
       .select('id, user_id')
       .eq('mac_address', normalizedMac)
-      .maybeSingle();
+      .single();
 
     console.log('Device lookup result:');
     console.log('- Device found:', !!device);
@@ -117,8 +121,8 @@ serve(async (req) => {
       });
     }
 
-    console.log('=== STEP 7: Claim Device ===');
-    const { error: updateError } = await supabaseClient
+    console.log('=== STEP 7: Claim Device (using admin client) ===');
+    const { error: updateError } = await adminClient
       .from('devices')
       .update({ user_id: user.id })
       .eq('mac_address', normalizedMac);
@@ -132,8 +136,8 @@ serve(async (req) => {
     }
     console.log('Device claimed successfully for user:', user.id);
 
-    console.log('=== STEP 8: Remove from Unclaimed Devices ===');
-    const { error: deleteError } = await supabaseClient
+    console.log('=== STEP 8: Remove from Unclaimed Devices (using admin client) ===');
+    const { error: deleteError } = await adminClient
       .from('unclaimed_devices')
       .delete()
       .eq('mac_address', normalizedMac);
