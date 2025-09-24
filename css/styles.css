@@ -50,13 +50,27 @@ body {
 }
 
 .title-icon {
-    font-size: 2.5rem;
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    object-fit: cover;
 }
 
 .header-actions {
     display: flex;
     gap: 10px;
     flex-wrap: wrap;
+}
+
+/* Authentication Section */
+.auth-section {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 20px;
+    width: 100%;
 }
 
 /* Button Styles */
@@ -525,14 +539,6 @@ body {
 }
 
 /* Authentication Styles */
-.auth-section {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 100vh;
-    padding: 20px;
-}
-
 .auth-container {
     background: rgba(255, 255, 255, 0.95);
     backdrop-filter: blur(10px);
@@ -540,6 +546,7 @@ body {
     padding: 40px;
     max-width: 400px;
     width: 100%;
+    margin: 0 auto;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
     border: 1px solid rgba(255, 255, 255, 0.2);
     text-align: center;
@@ -639,6 +646,20 @@ body {
         font-size: 1.5rem;
     }
     
+    .auth-container {
+        padding: 30px 20px;
+        margin: 0 10px;
+    }
+    
+    .auth-title {
+        font-size: 1.5rem;
+    }
+    
+    .title-icon {
+        width: 40px;
+        height: 40px;
+    }
+    
     .device-grid {
         grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
         gap: 15px;
@@ -673,5 +694,16 @@ body {
     .btn {
         padding: 10px 15px;
         font-size: 13px;
+    }
+    
+    .auth-title {
+        font-size: 1.3rem;
+        flex-direction: column;
+        gap: 5px;
+    }
+    
+    .title-icon {
+        width: 36px;
+        height: 36px;
     }
 }
