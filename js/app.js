@@ -357,13 +357,13 @@ class HomeAutomationApp {
             // Test the connection with a simple operation
             await this.testSupabaseConnection();
             
-            this.updateConnectionStatus('connected', 'Connected to Supabase');
-            this.showToast('Successfully connected to Supabase!', 'success');
+            this.updateConnectionStatus('connected', 'Connected to Server');
+            this.showToast('Successfully connected to Server!', 'success');
         } catch (error) {
             console.error('Supabase initialization error:', error);
             this.supabase = null; // Ensure it's null on error
-            this.updateConnectionStatus('disconnected', 'Failed to connect to Supabase');
-            this.showToast('Failed to connect to Supabase. Check your configuration.', 'error');
+            this.updateConnectionStatus('disconnected', 'Failed to connect to Server');
+            this.showToast('Failed to connect to Server. Check your configuration.', 'error');
         }
     }
 
