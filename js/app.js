@@ -8,6 +8,7 @@ class HomeAutomationApp {
         this.isProcessingVoiceCommand = false;
         this.realtimeChannel = null; // Track the realtime channel for cleanup
         this.isSignedIn = false; // Track sign-in state to prevent duplicate initialization
+        this.hiddenDevices = new Set(); // Track devices hidden by user
         
         // PWA Install properties
         this.deferredPrompt = null;
@@ -621,6 +622,9 @@ class HomeAutomationApp {
         
         // Update user info
         document.getElementById('userEmail').textContent = this.user.email;
+        
+        // Load user's hidden devices preferences
+        this.loadHiddenDevices();
         
         // Re-initialize voice control to ensure it works properly
         this.setupVoiceControl();
@@ -2219,7 +2223,10 @@ class HomeAutomationApp {
             `Remove "${device.name}" from your dashboard?`,
             () => {
                 try {
-                    // Remove from devices array
+                    // Add to hidden devices list (persistent)
+                    this.addToHiddenDevices(deviceId);
+
+                    // Remove from current devices array
                     this.devices = this.devices.filter(d => d.id !== deviceId);
 
                     // Remove the device card from UI
@@ -2228,9 +2235,9 @@ class HomeAutomationApp {
                         card.remove();
                     }
 
-                    this.showToast(`"${device.name}" removed successfully!`, 'success');
+                    this.showToast(`"${device.name}" removed from dashboard!`, 'success');
 
-                    // If no devices left, show empty state or refresh the grid
+                    // If no visible devices left, show empty state
                     if (this.devices.length === 0) {
                         this.renderDevices();
                     }
@@ -2334,6 +2341,59 @@ class HomeAutomationApp {
                 modal.style.display = 'none';
             }, 300);
         }
+    }
+
+    // Hidden devices management
+    loadHiddenDevices() {
+        if (!this.user) return;
+        
+        try {
+            const storageKey = `hiddenDevices_${this.user.id}`;
+            const hiddenDevicesData = localStorage.getItem(storageKey);
+            
+            if (hiddenDevicesData) {
+                const hiddenArray = JSON.parse(hiddenDevicesData);
+                this.hiddenDevices = new Set(hiddenArray);
+                console.log('Loaded hidden devices:', Array.from(this.hiddenDevices));
+            } else {
+                this.hiddenDevices = new Set();
+            }
+        } catch (error) {
+            console.warn('Failed to load hidden devices:', error);
+            this.hiddenDevices = new Set();
+        }
+    }
+
+    saveHiddenDevices() {
+        if (!this.user) return;
+        
+        try {
+            const storageKey = `hiddenDevices_${this.user.id}`;
+            const hiddenArray = Array.from(this.hiddenDevices);
+            localStorage.setItem(storageKey, JSON.stringify(hiddenArray));
+            console.log('Saved hidden devices:', hiddenArray);
+        } catch (error) {
+            console.warn('Failed to save hidden devices:', error);
+        }
+    }
+
+    addToHiddenDevices(deviceId) {
+        this.hiddenDevices.add(deviceId);
+        this.saveHiddenDevices();
+    }
+
+    removeFromHiddenDevices(deviceId) {
+        this.hiddenDevices.delete(deviceId);
+        this.saveHiddenDevices();
+    }
+
+    isDeviceHidden(deviceId) {
+        return this.hiddenDevices.has(deviceId);
+    }
+
+    clearHiddenDevices() {
+        this.hiddenDevices.clear();
+        this.saveHiddenDevices();
     }
 
     // Debug method to help diagnose authentication issues
