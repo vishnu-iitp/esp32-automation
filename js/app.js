@@ -254,19 +254,6 @@ class HomeAutomationApp {
                 }
                 return;
             }
-
-            // Handle delete device buttons
-            if (e.target.classList.contains('delete-device-btn') || e.target.closest('.delete-device-btn')) {
-                e.preventDefault();
-                e.stopPropagation();
-                const button = e.target.classList.contains('delete-device-btn') ? e.target : e.target.closest('.delete-device-btn');
-                const deviceCard = button.closest('.device-card');
-                if (deviceCard && deviceCard.dataset.deviceId) {
-                    const deviceId = parseInt(deviceCard.dataset.deviceId);
-                    this.removeDeviceFromUI(deviceId);
-                }
-                return;
-            }
         });
 
         // Modal overlay listeners
@@ -1151,11 +1138,8 @@ class HomeAutomationApp {
                     <div class="device-gpio">GPIO ${device.gpio}</div>
                 </div>
                 <div class="device-actions">
-                    <button class="edit-device-btn" title="Rename Device" data-device-id="${device.id}">
+                    <button class="edit-device-btn" title="Rename Device">
                         <span class="edit-icon">✏️</span>
-                    </button>
-                    <button class="delete-device-btn" title="Remove Device" data-device-id="${device.id}">
-                        <span class="delete-icon">🗑️</span>
                     </button>
                     <div class="device-icon">${icons[type] || '⚡️'}</div>
                 </div>
@@ -1374,9 +1358,6 @@ class HomeAutomationApp {
                 <div class="device-actions">
                     <button class="edit-device-btn" title="Rename Device" data-device-id="${device.id}">
                         <span class="edit-icon">✏️</span>
-                    </button>
-                    <button class="delete-device-btn" title="Remove Device" data-device-id="${device.id}">
-                        <span class="delete-icon">🗑️</span>
                     </button>
                     <div class="device-icon">${deviceIcon}</div>
                 </div>
@@ -2202,137 +2183,6 @@ class HomeAutomationApp {
             // Re-enable button
             saveBtn.disabled = false;
             saveBtn.textContent = 'Save Changes';
-        }
-    }
-
-    // Remove device from UI only (not from Supabase)
-    removeDeviceFromUI(deviceId) {
-        const device = this.devices.find(d => d.id === deviceId);
-        if (!device) {
-            this.showToast('Device not found', 'error');
-            return;
-        }
-
-        // Show modern confirmation modal
-        this.showConfirmationModal(
-            'Remove Device',
-            `Remove "${device.name}" from your dashboard?`,
-            () => {
-                try {
-                    // Remove from devices array
-                    this.devices = this.devices.filter(d => d.id !== deviceId);
-
-                    // Remove the device card from UI
-                    const card = document.querySelector(`[data-device-id="${deviceId}"]`);
-                    if (card) {
-                        card.remove();
-                    }
-
-                    this.showToast(`"${device.name}" removed successfully!`, 'success');
-
-                    // If no devices left, show empty state or refresh the grid
-                    if (this.devices.length === 0) {
-                        this.renderDevices();
-                    }
-
-                } catch (error) {
-                    console.error('Error removing device from UI:', error);
-                    this.showToast('Failed to remove device', 'error');
-                }
-            }
-        );
-    }
-
-    // Show modern confirmation modal
-    showConfirmationModal(title, message, onConfirm, onCancel = null) {
-        // Create modal if it doesn't exist
-        this.createConfirmationModal();
-
-        const modal = document.getElementById('confirmationModal');
-        const titleElement = document.getElementById('confirmationTitle');
-        const messageElement = document.getElementById('confirmationMessage');
-        const confirmBtn = document.getElementById('confirmationConfirm');
-        const cancelBtn = document.getElementById('confirmationCancel');
-
-        titleElement.textContent = title;
-        messageElement.textContent = message;
-
-        // Remove existing event listeners
-        const newConfirmBtn = confirmBtn.cloneNode(true);
-        const newCancelBtn = cancelBtn.cloneNode(true);
-        confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
-        cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
-
-        // Add new event listeners
-        newConfirmBtn.addEventListener('click', () => {
-            this.closeConfirmationModal();
-            if (onConfirm) onConfirm();
-        });
-
-        newCancelBtn.addEventListener('click', () => {
-            this.closeConfirmationModal();
-            if (onCancel) onCancel();
-        });
-
-        // Show modal
-        modal.style.display = 'block';
-        setTimeout(() => modal.classList.add('show'), 10);
-    }
-
-    // Create confirmation modal HTML
-    createConfirmationModal() {
-        if (document.getElementById('confirmationModal')) return;
-
-        const modalHTML = `
-            <div class="modal-overlay confirmation-overlay" id="confirmationModal">
-                <div class="confirmation-modal">
-                    <div class="confirmation-icon">
-                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M3 6h18"></path>
-                            <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
-                            <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
-                            <line x1="10" y1="11" x2="10" y2="17"></line>
-                            <line x1="14" y1="11" x2="14" y2="17"></line>
-                        </svg>
-                    </div>
-                    <div class="confirmation-content">
-                        <h3 id="confirmationTitle">Remove Device</h3>
-                        <p id="confirmationMessage">Are you sure you want to remove this device?</p>
-                    </div>
-                    <div class="confirmation-actions">
-                        <button class="btn-cancel" id="confirmationCancel">Cancel</button>
-                        <button class="btn-remove" id="confirmationConfirm">Remove</button>
-                    </div>
-                </div>
-            </div>
-        `;
-
-        document.body.insertAdjacentHTML('beforeend', modalHTML);
-
-        // Add click outside to close
-        const modal = document.getElementById('confirmationModal');
-        modal.addEventListener('click', (e) => {
-            if (e.target.classList.contains('modal-overlay')) {
-                this.closeConfirmationModal();
-            }
-        });
-
-        // Add escape key to close
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape' && modal.classList.contains('show')) {
-                this.closeConfirmationModal();
-            }
-        });
-    }
-
-    // Close confirmation modal
-    closeConfirmationModal() {
-        const modal = document.getElementById('confirmationModal');
-        if (modal) {
-            modal.classList.remove('show');
-            setTimeout(() => {
-                modal.style.display = 'none';
-            }, 300);
         }
     }
 
