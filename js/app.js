@@ -254,11 +254,34 @@ class HomeAutomationApp {
                 }
                 return;
             }
+
+            // Handle delete device buttons
+            if (e.target.classList.contains('delete-device-btn') || e.target.closest('.delete-device-btn')) {
+                e.preventDefault();
+                e.stopPropagation();
+                const button = e.target.classList.contains('delete-device-btn') ? e.target : e.target.closest('.delete-device-btn');
+                const deviceCard = button.closest('.device-card');
+                if (deviceCard && deviceCard.dataset.deviceId) {
+                    const deviceId = parseInt(deviceCard.dataset.deviceId);
+                    this.openDeleteConfirmationModal(deviceId);
+                }
+                return;
+            }
         });
+
+        // Delete Device Modal Event Listeners
+        const closeDeleteDevice = document.getElementById('closeDeleteDevice');
+        const cancelDeleteDevice = document.getElementById('cancelDeleteDevice');
+        const confirmDeleteDevice = document.getElementById('confirmDeleteDevice');
+
+        if (closeDeleteDevice) closeDeleteDevice.addEventListener('click', () => this.closeDeleteDeviceModal());
+        if (cancelDeleteDevice) cancelDeleteDevice.addEventListener('click', () => this.closeDeleteDeviceModal());
+        if (confirmDeleteDevice) confirmDeleteDevice.addEventListener('click', () => this.deleteDevice());
 
         // Modal overlay listeners
         const addDeviceModal = document.getElementById('addDeviceModal');
         const claimDeviceModal = document.getElementById('claimDeviceModal');
+        const deleteDeviceModal = document.getElementById('deleteDeviceModal');
 
         if (addDeviceModal) addDeviceModal.addEventListener('click', (e) => {
             if (e.target.classList.contains('modal-overlay')) this.closeAddDeviceModal();
@@ -266,6 +289,10 @@ class HomeAutomationApp {
 
         if (claimDeviceModal) claimDeviceModal.addEventListener('click', (e) => {
             if (e.target.classList.contains('modal-overlay')) this.closeClaimDeviceModal();
+        });
+        
+        if (deleteDeviceModal) deleteDeviceModal.addEventListener('click', (e) => {
+            if (e.target.classList.contains('modal-overlay')) this.closeDeleteDeviceModal();
         });
 
         // Enter key listeners for forms
@@ -991,6 +1018,78 @@ class HomeAutomationApp {
         }
     }
 
+    // Device deletion functionality
+    openDeleteConfirmationModal(deviceId) {
+        const device = this.devices.find(d => d.id === deviceId);
+        if (!device) {
+            this.showToast('Device not found', 'error');
+            return;
+        }
+
+        // Store the device ID for deletion
+        this.deviceToDelete = deviceId;
+        
+        // Update the modal with device information
+        const deviceNameDisplay = document.getElementById('deviceNameToDelete');
+        if (deviceNameDisplay) {
+            deviceNameDisplay.textContent = `"${device.name}" (GPIO ${device.gpio})`;
+        }
+
+        this.openModal('deleteDeviceModal');
+    }
+
+    closeDeleteDeviceModal() {
+        this.deviceToDelete = null;
+        this.closeModal('deleteDeviceModal');
+    }
+
+    async deleteDevice() {
+        if (!this.deviceToDelete || !this.supabase || !this.user) {
+            this.showToast('Cannot delete device at this time', 'error');
+            return;
+        }
+
+        const device = this.devices.find(d => d.id === this.deviceToDelete);
+        if (!device) {
+            this.showToast('Device not found', 'error');
+            this.closeDeleteDeviceModal();
+            return;
+        }
+
+        try {
+            await this.updateButtonState('confirmDeleteDevice', true, 'Delete Device', 'Deleting...');
+
+            // Call the Supabase function to delete the device
+            const { data, error } = await this.supabase.functions.invoke('delete-device', {
+                body: { device_id: this.deviceToDelete }
+            });
+
+            if (error) throw error;
+
+            // Remove device from local array immediately for better UX
+            this.devices = this.devices.filter(d => d.id !== this.deviceToDelete);
+            
+            // Remove device card from UI
+            const card = document.querySelector(`[data-device-id="${this.deviceToDelete}"]`);
+            if (card) {
+                card.remove();
+            }
+
+            this.closeDeleteDeviceModal();
+            this.showToast(`Device "${device.name}" deleted successfully!`, 'success');
+
+        } catch (error) {
+            console.error('Delete device error:', error);
+            this.showToast(error.message || 'Failed to delete device. Please try again.', 'error');
+            
+            // If deletion failed, refresh devices to ensure UI is in sync
+            await this.fetchUserDevices();
+            
+        } finally {
+            await this.updateButtonState('confirmDeleteDevice', false, 'Delete Device', 'Deleting...');
+        }
+    }
+
     handleDeviceUpdate(updatedDevice) {
         const device = this.devices.find(d => d.id === updatedDevice.id);
         if (device) {
@@ -1138,8 +1237,11 @@ class HomeAutomationApp {
                     <div class="device-gpio">GPIO ${device.gpio}</div>
                 </div>
                 <div class="device-actions">
-                    <button class="edit-device-btn" title="Rename Device">
+                    <button class="edit-device-btn" title="Rename Device" data-device-id="${device.id}">
                         <span class="edit-icon">✏️</span>
+                    </button>
+                    <button class="delete-device-btn" title="Delete Device" data-device-id="${device.id}">
+                        <span class="delete-icon">🗑️</span>
                     </button>
                     <div class="device-icon">${icons[type] || '⚡️'}</div>
                 </div>
@@ -1147,7 +1249,7 @@ class HomeAutomationApp {
             <div class="device-controls">
                 <div class="device-status">${device.state ? 'ON' : 'OFF'}</div>
                 <button class="toggle-switch ${device.state ? 'active' : ''}" 
-                        onclick="app.toggleDevice(${device.id})"></button>
+                        data-device-id="${device.id}"></button>
             </div>
         `;
 
