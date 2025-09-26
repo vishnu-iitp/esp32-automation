@@ -2213,33 +2213,119 @@ class HomeAutomationApp {
             return;
         }
 
-        // Show confirmation dialog
-        const confirmMessage = `Are you sure you want to remove "${device.name}" from the app?\n\nNote: This will only remove it from your view. The device will still exist in the database and can be re-added later.`;
-        
-        if (!confirm(confirmMessage)) {
-            return;
-        }
+        // Show modern confirmation modal
+        this.showConfirmationModal(
+            'Remove Device',
+            `Remove "${device.name}" from your dashboard?`,
+            () => {
+                try {
+                    // Remove from devices array
+                    this.devices = this.devices.filter(d => d.id !== deviceId);
 
-        try {
-            // Remove from devices array
-            this.devices = this.devices.filter(d => d.id !== deviceId);
+                    // Remove the device card from UI
+                    const card = document.querySelector(`[data-device-id="${deviceId}"]`);
+                    if (card) {
+                        card.remove();
+                    }
 
-            // Remove the device card from UI
-            const card = document.querySelector(`[data-device-id="${deviceId}"]`);
-            if (card) {
-                card.remove();
+                    this.showToast(`"${device.name}" removed successfully!`, 'success');
+
+                    // If no devices left, show empty state or refresh the grid
+                    if (this.devices.length === 0) {
+                        this.renderDevices();
+                    }
+
+                } catch (error) {
+                    console.error('Error removing device from UI:', error);
+                    this.showToast('Failed to remove device', 'error');
+                }
             }
+        );
+    }
 
-            this.showToast(`"${device.name}" removed from app successfully!`, 'success');
+    // Show modern confirmation modal
+    showConfirmationModal(title, message, onConfirm, onCancel = null) {
+        // Create modal if it doesn't exist
+        this.createConfirmationModal();
 
-            // If no devices left, show empty state or refresh the grid
-            if (this.devices.length === 0) {
-                this.renderDevices();
+        const modal = document.getElementById('confirmationModal');
+        const titleElement = document.getElementById('confirmationTitle');
+        const messageElement = document.getElementById('confirmationMessage');
+        const confirmBtn = document.getElementById('confirmationConfirm');
+        const cancelBtn = document.getElementById('confirmationCancel');
+
+        titleElement.textContent = title;
+        messageElement.textContent = message;
+
+        // Remove existing event listeners
+        const newConfirmBtn = confirmBtn.cloneNode(true);
+        const newCancelBtn = cancelBtn.cloneNode(true);
+        confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
+        cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
+
+        // Add new event listeners
+        newConfirmBtn.addEventListener('click', () => {
+            this.closeConfirmationModal();
+            if (onConfirm) onConfirm();
+        });
+
+        newCancelBtn.addEventListener('click', () => {
+            this.closeConfirmationModal();
+            if (onCancel) onCancel();
+        });
+
+        // Show modal
+        modal.style.display = 'block';
+        setTimeout(() => modal.classList.add('show'), 10);
+    }
+
+    // Create confirmation modal HTML
+    createConfirmationModal() {
+        if (document.getElementById('confirmationModal')) return;
+
+        const modalHTML = `
+            <div class="modal-overlay" id="confirmationModal">
+                <div class="modal-content confirmation-modal">
+                    <div class="modal-header">
+                        <h2 id="confirmationTitle">Confirm Action</h2>
+                    </div>
+                    <div class="modal-body">
+                        <p id="confirmationMessage">Are you sure?</p>
+                    </div>
+                    <div class="modal-actions">
+                        <button class="btn btn-secondary" id="confirmationCancel">Cancel</button>
+                        <button class="btn btn-danger" id="confirmationConfirm">Remove</button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+
+        // Add click outside to close
+        const modal = document.getElementById('confirmationModal');
+        modal.addEventListener('click', (e) => {
+            if (e.target.classList.contains('modal-overlay')) {
+                this.closeConfirmationModal();
             }
+        });
 
-        } catch (error) {
-            console.error('Error removing device from UI:', error);
-            this.showToast('Failed to remove device from app', 'error');
+        // Add escape key to close
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && modal.classList.contains('show')) {
+                this.closeConfirmationModal();
+            }
+        });
+    }
+
+    // Close confirmation modal
+    closeConfirmationModal() {
+        const modal = document.getElementById('confirmationModal');
+        if (modal) {
+            modal.classList.remove('show');
+            setTimeout(() => {
+                modal.style.display = 'none';
+            }, 300);
         }
     }
 

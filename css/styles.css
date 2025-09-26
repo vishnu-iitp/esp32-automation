@@ -466,6 +466,74 @@ body {
     justify-content: flex-end;
 }
 
+/* Confirmation Modal Styles */
+.confirmation-modal {
+    max-width: 400px;
+    text-align: center;
+}
+
+.modal-overlay {
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.3s ease;
+}
+
+.modal-overlay.show {
+    opacity: 1;
+    visibility: visible;
+}
+
+.modal-overlay.show .modal-content {
+    transform: scale(1) translateY(0);
+}
+
+.modal-content {
+    transform: scale(0.9) translateY(-20px);
+    transition: all 0.3s ease;
+}
+
+.confirmation-modal .modal-header {
+    text-align: center;
+    padding: 25px 30px 15px;
+    border-bottom: none;
+}
+
+.confirmation-modal .modal-header h2 {
+    color: #dc2626;
+    font-size: 1.3rem;
+    font-weight: 600;
+}
+
+.confirmation-modal .modal-body {
+    padding: 15px 30px 25px;
+}
+
+.confirmation-modal .modal-body p {
+    color: #6b7280;
+    font-size: 1rem;
+    line-height: 1.5;
+}
+
+.modal-actions {
+    padding: 20px 30px;
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+}
+
+.btn-danger {
+    background: linear-gradient(135deg, #dc2626, #b91c1c);
+    color: white;
+    border: none;
+    transition: all 0.2s ease;
+}
+
+.btn-danger:hover {
+    background: linear-gradient(135deg, #b91c1c, #991b1b);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 15px rgba(220, 38, 38, 0.3);
+}
+
 /* Settings Sections */
 .settings-section {
     margin-bottom: 30px;
