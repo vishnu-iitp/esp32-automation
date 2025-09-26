@@ -42,7 +42,6 @@ serve(async (req)=>{
         }
       });
     }
-    
     const device = deviceList[0];
     // Check if device is claimed
     if (!device.user_id) {

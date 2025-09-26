@@ -254,6 +254,19 @@ class HomeAutomationApp {
                 }
                 return;
             }
+
+            // Handle delete device buttons
+            if (e.target.classList.contains('delete-device-btn') || e.target.closest('.delete-device-btn')) {
+                e.preventDefault();
+                e.stopPropagation();
+                const button = e.target.classList.contains('delete-device-btn') ? e.target : e.target.closest('.delete-device-btn');
+                const deviceCard = button.closest('.device-card');
+                if (deviceCard && deviceCard.dataset.deviceId) {
+                    const deviceId = parseInt(deviceCard.dataset.deviceId);
+                    this.removeDeviceFromUI(deviceId);
+                }
+                return;
+            }
         });
 
         // Modal overlay listeners
@@ -1138,8 +1151,11 @@ class HomeAutomationApp {
                     <div class="device-gpio">GPIO ${device.gpio}</div>
                 </div>
                 <div class="device-actions">
-                    <button class="edit-device-btn" title="Rename Device">
+                    <button class="edit-device-btn" title="Rename Device" data-device-id="${device.id}">
                         <span class="edit-icon">✏️</span>
+                    </button>
+                    <button class="delete-device-btn" title="Remove Device" data-device-id="${device.id}">
+                        <span class="delete-icon">🗑️</span>
                     </button>
                     <div class="device-icon">${icons[type] || '⚡️'}</div>
                 </div>
@@ -1358,6 +1374,9 @@ class HomeAutomationApp {
                 <div class="device-actions">
                     <button class="edit-device-btn" title="Rename Device" data-device-id="${device.id}">
                         <span class="edit-icon">✏️</span>
+                    </button>
+                    <button class="delete-device-btn" title="Remove Device" data-device-id="${device.id}">
+                        <span class="delete-icon">🗑️</span>
                     </button>
                     <div class="device-icon">${deviceIcon}</div>
                 </div>
@@ -2183,6 +2202,44 @@ class HomeAutomationApp {
             // Re-enable button
             saveBtn.disabled = false;
             saveBtn.textContent = 'Save Changes';
+        }
+    }
+
+    // Remove device from UI only (not from Supabase)
+    removeDeviceFromUI(deviceId) {
+        const device = this.devices.find(d => d.id === deviceId);
+        if (!device) {
+            this.showToast('Device not found', 'error');
+            return;
+        }
+
+        // Show confirmation dialog
+        const confirmMessage = `Are you sure you want to remove "${device.name}" from the app?\n\nNote: This will only remove it from your view. The device will still exist in the database and can be re-added later.`;
+        
+        if (!confirm(confirmMessage)) {
+            return;
+        }
+
+        try {
+            // Remove from devices array
+            this.devices = this.devices.filter(d => d.id !== deviceId);
+
+            // Remove the device card from UI
+            const card = document.querySelector(`[data-device-id="${deviceId}"]`);
+            if (card) {
+                card.remove();
+            }
+
+            this.showToast(`"${device.name}" removed from app successfully!`, 'success');
+
+            // If no devices left, show empty state or refresh the grid
+            if (this.devices.length === 0) {
+                this.renderDevices();
+            }
+
+        } catch (error) {
+            console.error('Error removing device from UI:', error);
+            this.showToast('Failed to remove device from app', 'error');
         }
     }
 

@@ -42,6 +42,7 @@ const int RESET_BUTTON_PIN = 5; // GPIO 0 (BOOT button) for WiFi reset
 const unsigned long HEARTBEAT_INTERVAL = 30000; // 30 seconds
 const unsigned long CLAIM_CHECK_INTERVAL = 30000; // 30 seconds for unclaimed devices
 const unsigned long REGISTRATION_RETRY_INTERVAL = 60000; // 1 minute
+const unsigned long FACTORY_RESET_HOLD_TIME = 10000; // 10 seconds for factory reset
 
 // =================== GLOBAL VARIABLES ===================
 ModernWiFiManager wifiManager;
@@ -70,6 +71,7 @@ void setupClaimedDevice();
 void setupUnclaimedDevice();
 bool fetchAndSetInitialDeviceStates();
 void checkResetButton();
+void triggerFactoryReset();
 
 void setup() {
     Serial.begin(115200);
@@ -485,26 +487,61 @@ bool fetchAndSetInitialDeviceStates() {
 void checkResetButton() {
     static unsigned long buttonPressTime = 0;
     static bool buttonPressed = false;
-    
+
     if (digitalRead(RESET_BUTTON_PIN) == LOW) { // Button pressed (active low)
         if (!buttonPressed) {
             buttonPressed = true;
             buttonPressTime = millis();
             Serial.println("Reset button pressed...");
         }
-        
-        // Check if button held for 5 seconds
-        if (millis() - buttonPressTime > 5000) {
-            Serial.println("Reset button held for 5 seconds. Resetting WiFi settings...");
-            wifiManager.resetWiFiSettings();
+
+        // Check if button held for 10 seconds for factory reset
+        if (millis() - buttonPressTime > FACTORY_RESET_HOLD_TIME) {
+            triggerFactoryReset();
+            // The resetWiFiSettings in triggerFactoryReset will restart the device
         }
     } else {
         if (buttonPressed) {
             buttonPressed = false;
             unsigned long pressDuration = millis() - buttonPressTime;
-            if (pressDuration < 5000) {
-                Serial.println("Reset button released (hold for 5 seconds to reset WiFi)");
+
+            // If held for more than 5 seconds but less than 10, just reset WiFi
+            if (pressDuration > 5000 && pressDuration < FACTORY_RESET_HOLD_TIME) {
+                 Serial.println("Reset button held for 5 seconds. Resetting WiFi settings...");
+                 wifiManager.resetWiFiSettings();
+            } else if (pressDuration < 5000) {
+                Serial.println("Reset button released (hold for 5s to reset WiFi, 10s for factory reset)");
             }
         }
     }
+}
+
+// =================== FACTORY RESET FUNCTIONALITY ===================
+void triggerFactoryReset() {
+    Serial.println("!!! FACTORY RESET TRIGGERED !!!");
+
+    http.begin("https://" + String(SUPABASE_PROJECT_ID) + ".supabase.co/functions/v1/factory-reset-device");
+    http.addHeader("Content-Type", "application/json");
+    http.addHeader("Authorization", "Bearer " + String(SUPABASE_ANON_KEY));
+
+    DynamicJsonDocument doc(256);
+    doc["mac_address"] = deviceMacAddress;
+
+    String payload;
+    serializeJson(doc, payload);
+
+    int httpCode = http.POST(payload);
+
+    if (httpCode == 200) {
+        Serial.println("Device successfully reset in the database.");
+        setClaimedStatus(false); // Set as unclaimed in EEPROM
+        wifiManager.resetWiFiSettings(); // This will also trigger a restart
+    } else {
+        Serial.println("Failed to reset device in the database. HTTP code: " + String(httpCode));
+        if (httpCode > 0) {
+            Serial.println("Response: " + http.getString());
+        }
+    }
+
+    http.end();
 }

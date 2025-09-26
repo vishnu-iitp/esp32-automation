@@ -278,7 +278,8 @@ body {
     gap: 10px;
 }
 
-.edit-device-btn {
+.edit-device-btn,
+.delete-device-btn {
     background: rgba(255, 255, 255, 0.2);
     border: none;
     border-radius: 8px;
@@ -295,7 +296,13 @@ body {
     transform: scale(1.1);
 }
 
-.device-card.device-on .edit-device-btn {
+.delete-device-btn:hover {
+    background: rgba(255, 69, 69, 0.3);
+    transform: scale(1.1);
+}
+
+.device-card.device-on .edit-device-btn,
+.device-card.device-on .delete-device-btn {
     background: rgba(255, 255, 255, 0.3);
 }
 
@@ -303,7 +310,12 @@ body {
     background: rgba(255, 255, 255, 0.4);
 }
 
-.edit-icon {
+.device-card.device-on .delete-device-btn:hover {
+    background: rgba(255, 69, 69, 0.4);
+}
+
+.edit-icon,
+.delete-icon {
     font-size: 1rem;
 }
 
