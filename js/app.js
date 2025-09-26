@@ -8,7 +8,6 @@ class HomeAutomationApp {
         this.isProcessingVoiceCommand = false;
         this.realtimeChannel = null; // Track the realtime channel for cleanup
         this.isSignedIn = false; // Track sign-in state to prevent duplicate initialization
-        this.hiddenDevices = new Set(); // Track devices hidden by user
         
         // PWA Install properties
         this.deferredPrompt = null;
@@ -623,9 +622,6 @@ class HomeAutomationApp {
         // Update user info
         document.getElementById('userEmail').textContent = this.user.email;
         
-        // Load user's hidden devices preferences
-        this.loadHiddenDevices();
-        
         // Re-initialize voice control to ensure it works properly
         this.setupVoiceControl();
         
@@ -905,11 +901,19 @@ class HomeAutomationApp {
                 return;
             }
             
-            this.devices = data || [];
+            // Filter out hidden devices before setting this.devices
+            const allDevices = data || [];
+            this.devices = this.filterHiddenDevices(allDevices);
             this.renderDevices();
             
             if (this.devices.length === 0) {
-                this.showToast('No devices found. Add a device or claim an existing one.', 'info');
+                // Check if there are hidden devices
+                const hiddenCount = allDevices.length - this.devices.length;
+                if (hiddenCount > 0) {
+                    this.showToast(`No visible devices. ${hiddenCount} device(s) are hidden.`, 'info');
+                } else {
+                    this.showToast('No devices found. Add a device or claim an existing one.', 'info');
+                }
             }
         } catch (error) {
             console.error('Unexpected error fetching devices:', error);
@@ -2209,7 +2213,7 @@ class HomeAutomationApp {
         }
     }
 
-    // Remove device from UI only (not from Supabase)
+    // Remove device from UI permanently (not from Supabase)
     removeDeviceFromUI(deviceId) {
         const device = this.devices.find(d => d.id === deviceId);
         if (!device) {
@@ -2223,10 +2227,10 @@ class HomeAutomationApp {
             `Remove "${device.name}" from your dashboard?`,
             () => {
                 try {
-                    // Add to hidden devices list (persistent)
+                    // Add device to hidden devices list in localStorage
                     this.addToHiddenDevices(deviceId);
 
-                    // Remove from current devices array
+                    // Remove from devices array
                     this.devices = this.devices.filter(d => d.id !== deviceId);
 
                     // Remove the device card from UI
@@ -2235,9 +2239,9 @@ class HomeAutomationApp {
                         card.remove();
                     }
 
-                    this.showToast(`"${device.name}" removed from dashboard!`, 'success');
+                    this.showToast(`"${device.name}" removed successfully!`, 'success');
 
-                    // If no visible devices left, show empty state
+                    // If no devices left, show empty state or refresh the grid
                     if (this.devices.length === 0) {
                         this.renderDevices();
                     }
@@ -2248,6 +2252,50 @@ class HomeAutomationApp {
                 }
             }
         );
+    }
+
+    // Add device to hidden devices list
+    addToHiddenDevices(deviceId) {
+        try {
+            const hiddenDevices = this.getHiddenDevices();
+            if (!hiddenDevices.includes(deviceId)) {
+                hiddenDevices.push(deviceId);
+                localStorage.setItem(`hiddenDevices_${this.user.id}`, JSON.stringify(hiddenDevices));
+                console.log('Device added to hidden list:', deviceId);
+            }
+        } catch (error) {
+            console.error('Error adding device to hidden list:', error);
+        }
+    }
+
+    // Get list of hidden devices from localStorage
+    getHiddenDevices() {
+        try {
+            if (!this.user || !this.user.id) return [];
+            const stored = localStorage.getItem(`hiddenDevices_${this.user.id}`);
+            return stored ? JSON.parse(stored) : [];
+        } catch (error) {
+            console.error('Error getting hidden devices:', error);
+            return [];
+        }
+    }
+
+    // Remove device from hidden devices list (to restore it)
+    removeFromHiddenDevices(deviceId) {
+        try {
+            const hiddenDevices = this.getHiddenDevices();
+            const updatedHidden = hiddenDevices.filter(id => id !== deviceId);
+            localStorage.setItem(`hiddenDevices_${this.user.id}`, JSON.stringify(updatedHidden));
+            console.log('Device removed from hidden list:', deviceId);
+        } catch (error) {
+            console.error('Error removing device from hidden list:', error);
+        }
+    }
+
+    // Filter out hidden devices
+    filterHiddenDevices(devices) {
+        const hiddenDevices = this.getHiddenDevices();
+        return devices.filter(device => !hiddenDevices.includes(device.id));
     }
 
     // Show modern confirmation modal
@@ -2341,59 +2389,6 @@ class HomeAutomationApp {
                 modal.style.display = 'none';
             }, 300);
         }
-    }
-
-    // Hidden devices management
-    loadHiddenDevices() {
-        if (!this.user) return;
-        
-        try {
-            const storageKey = `hiddenDevices_${this.user.id}`;
-            const hiddenDevicesData = localStorage.getItem(storageKey);
-            
-            if (hiddenDevicesData) {
-                const hiddenArray = JSON.parse(hiddenDevicesData);
-                this.hiddenDevices = new Set(hiddenArray);
-                console.log('Loaded hidden devices:', Array.from(this.hiddenDevices));
-            } else {
-                this.hiddenDevices = new Set();
-            }
-        } catch (error) {
-            console.warn('Failed to load hidden devices:', error);
-            this.hiddenDevices = new Set();
-        }
-    }
-
-    saveHiddenDevices() {
-        if (!this.user) return;
-        
-        try {
-            const storageKey = `hiddenDevices_${this.user.id}`;
-            const hiddenArray = Array.from(this.hiddenDevices);
-            localStorage.setItem(storageKey, JSON.stringify(hiddenArray));
-            console.log('Saved hidden devices:', hiddenArray);
-        } catch (error) {
-            console.warn('Failed to save hidden devices:', error);
-        }
-    }
-
-    addToHiddenDevices(deviceId) {
-        this.hiddenDevices.add(deviceId);
-        this.saveHiddenDevices();
-    }
-
-    removeFromHiddenDevices(deviceId) {
-        this.hiddenDevices.delete(deviceId);
-        this.saveHiddenDevices();
-    }
-
-    isDeviceHidden(deviceId) {
-        return this.hiddenDevices.has(deviceId);
-    }
-
-    clearHiddenDevices() {
-        this.hiddenDevices.clear();
-        this.saveHiddenDevices();
     }
 
     // Debug method to help diagnose authentication issues
